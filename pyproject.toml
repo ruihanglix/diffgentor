@@ -19,9 +19,9 @@ classifiers = [
 ]
 
 dependencies = [
-    "torch==2.9.1",
-    "torchvision==0.24.1",
-    "torchaudio==2.9.1",
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "torchaudio==2.8.0",
     "diffusers",
     "transformers==4.57.3",
     "tokenizers==0.22.1",
