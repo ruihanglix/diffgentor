@@ -106,6 +106,20 @@ GEMINI_API_KEY=your_key
 
 See [Environment Variables](./docs/env_vars.md) for the complete list.
 
+## Citation
+
+```bibtex
+@misc{li2026genarenaachievehumanalignedevaluation,
+      title={GenArena: How Can We Achieve Human-Aligned Evaluation for Visual Generation Tasks?},
+      author={Ruihang Li and Leigang Qu and Jingxu Zhang and Dongnan Gui and Mengde Xu and Xiaosong Zhang and Han Hu and Wenjie Wang and Jiaqi Wang},
+      year={2026},
+      eprint={2602.06013},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2602.06013},
+}
+```
+
 ## License
 
 Apache-2.0
