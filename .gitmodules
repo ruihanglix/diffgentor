@@ -7,3 +7,6 @@
 [submodule "diffgentor/models/third_party/bagel"]
 	path = diffgentor/models/third_party/bagel
 	url = https://github.com/diffgentor/Bagel
+[submodule "diffgentor/models/third_party/dreamomni2"]
+	path = diffgentor/models/third_party/dreamomni2
+	url = https://github.com/diffgentor/DreamOmni2
