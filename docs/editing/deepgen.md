@@ -20,10 +20,10 @@ DeepGen requires:
 ## Basic Usage
 
 ```bash
-DG_DEEPGEN_SD3_PATH=/path/to/unipic2 \
+DG_DEEPGEN_DIFFUSION_PATH=/path/to/diffusion_model \
 DG_DEEPGEN_QWEN_PATH=/path/to/qwen2.5-vl \
 diffgentor edit --backend deepgen \
-    --model_name /path/to/checkpoint.safetensors \
+    --model_name /path/to/checkpoint.pt \
     --input data.csv \
     --output_dir ./output
 ```
@@ -32,7 +32,7 @@ diffgentor edit --backend deepgen \
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DG_DEEPGEN_SD3_PATH` | Path to SD3.5 model (**required**) | - |
+| `DG_DEEPGEN_DIFFUSION_PATH` | Path to diffusion model (**required**) | - |
 | `DG_DEEPGEN_QWEN_PATH` | Path to Qwen2.5-VL model (**required**) | - |
 | `DG_DEEPGEN_GPUS_PER_MODEL` | GPUs per model instance | `0` (all visible) |
 | `DG_DEEPGEN_CFG_PROMPT` | CFG prompt for unconditional | `""` |
@@ -46,10 +46,10 @@ diffgentor edit --backend deepgen \
 
 ## Model Files
 
-### SD3.5 Model Structure
+### Diffusion Model Structure
 
 ```
-/path/to/sd3.5/
+/path/to/diffusion_model/
 ├── transformer/
 │   ├── config.json
 │   └── diffusion_pytorch_model.safetensors
@@ -72,7 +72,7 @@ diffgentor edit --backend deepgen \
 
 ### DeepGen Checkpoint
 
-The checkpoint file (`.safetensors` or `.pt`) contains:
+The checkpoint file (`.pt` or `.safetensors`) contains:
 - Connector weights
 - Projector weights
 - Meta queries
@@ -83,10 +83,10 @@ The checkpoint file (`.safetensors` or `.pt`) contains:
 ### Image Editing
 
 ```bash
-DG_DEEPGEN_SD3_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
+DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
 diffgentor edit --backend deepgen \
-    --model_name /checkpoints/deepgen.safetensors \
+    --model_name /checkpoints/deepgen.pt \
     --input data.csv \
     --guidance_scale 4.0 \
     --num_inference_steps 50
@@ -95,10 +95,10 @@ diffgentor edit --backend deepgen \
 ### Text-to-Image Generation
 
 ```bash
-DG_DEEPGEN_SD3_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
+DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
 diffgentor t2i --backend deepgen \
-    --model_name /checkpoints/deepgen.safetensors \
+    --model_name /checkpoints/deepgen.pt \
     --prompt "A cat sitting on a windowsill" \
     --height 1024 \
     --width 1024
@@ -110,23 +110,23 @@ diffgentor t2i --backend deepgen \
 # Use 2 GPUs per model instance
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 DG_DEEPGEN_GPUS_PER_MODEL=2 \
-DG_DEEPGEN_SD3_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
+DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
 diffgentor edit --backend deepgen \
-    --model_name /checkpoints/deepgen.safetensors \
+    --model_name /checkpoints/deepgen.pt \
     --input data.csv
 ```
 
 ### Custom Connector Configuration
 
 ```bash
-DG_DEEPGEN_SD3_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
+DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
 DG_DEEPGEN_NUM_QUERIES=256 \
 DG_DEEPGEN_CONNECTOR_LAYERS=8 \
 DG_DEEPGEN_CONNECTOR_HEADS=64 \
 diffgentor edit --backend deepgen \
-    --model_name /checkpoints/deepgen.safetensors \
+    --model_name /checkpoints/deepgen.pt \
     --input data.csv
 ```
 

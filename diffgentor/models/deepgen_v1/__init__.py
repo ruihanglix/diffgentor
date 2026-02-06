@@ -13,10 +13,10 @@ Example usage:
     from diffgentor.models.deepgen_v1 import DeepGenModel
 
     model = DeepGenModel(
-        sd3_path="/path/to/sd3.5",
+        diffusion_path="/path/to/diffusion_model",
         qwen_path="/path/to/qwen2.5-vl",
     )
-    model.load_checkpoint("/path/to/checkpoint.safetensors")
+    model.load_checkpoint("/path/to/checkpoint.pt")
 
     # Text-to-image generation
     images = model.generate(

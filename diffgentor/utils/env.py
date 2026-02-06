@@ -462,7 +462,7 @@ class DeepGenEnv(ModelEnvConfig):
     It supports both text-to-image generation and image editing.
 
     Environment variables:
-        DG_DEEPGEN_SD3_PATH: Path to SD3.5 model (transformer, vae, scheduler)
+        DG_DEEPGEN_DIFFUSION_PATH: Path to diffusion model (transformer, vae, scheduler)
         DG_DEEPGEN_QWEN_PATH: Path to Qwen2.5-VL model
         DG_DEEPGEN_GPUS_PER_MODEL: Number of GPUs per model instance (default: 0, use all visible)
         DG_DEEPGEN_CFG_PROMPT: CFG prompt for unconditional generation (default: "")
@@ -490,7 +490,7 @@ class DeepGenEnv(ModelEnvConfig):
     """
 
     _prefix: str = field(default="DEEPGEN", repr=False)
-    sd3_path: Optional[str] = None
+    diffusion_path: Optional[str] = None
     qwen_path: Optional[str] = None
     _gpus_per_model: int = field(default=0, repr=False)
     cfg_prompt: str = ""
@@ -505,7 +505,7 @@ class DeepGenEnv(ModelEnvConfig):
     @classmethod
     def load(cls) -> "DeepGenEnv":
         return cls(
-            sd3_path=get_env_str("DEEPGEN_SD3_PATH"),
+            diffusion_path=get_env_str("DEEPGEN_DIFFUSION_PATH"),
             qwen_path=get_env_str("DEEPGEN_QWEN_PATH"),
             _gpus_per_model=get_env_int("DEEPGEN_GPUS_PER_MODEL", 0),
             cfg_prompt=get_env_str("DEEPGEN_CFG_PROMPT", ""),

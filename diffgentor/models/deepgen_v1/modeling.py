@@ -95,7 +95,7 @@ class DeepGenModel(nn.Module):
     - Image editing with text instructions (I2I)
 
     Args:
-        sd3_path: Path to SD3.5 model (transformer, vae, scheduler)
+        diffusion_path: Path to diffusion model (transformer, vae, scheduler)
         qwen_path: Path to Qwen2.5-VL model
         num_queries: Number of query tokens for the connector (default: 128)
         connector_config: Configuration for the connector module
@@ -132,7 +132,7 @@ class DeepGenModel(nn.Module):
 
     def __init__(
         self,
-        sd3_path: str,
+        diffusion_path: str,
         qwen_path: str,
         num_queries: int = 128,
         connector_config: Optional[Dict[str, Any]] = None,
@@ -184,10 +184,10 @@ class DeepGenModel(nn.Module):
             padding_side='right',
         )
 
-        # Load SD3.5 Transformer
-        print(f"Loading SD3.5 Transformer from: {sd3_path}")
+        # Load diffusion Transformer
+        print(f"Loading diffusion Transformer from: {diffusion_path}")
         self.transformer = SD3Transformer2DModel.from_pretrained(
-            sd3_path,
+            diffusion_path,
             subfolder="transformer",
             torch_dtype=torch_dtype,
         )
@@ -196,9 +196,9 @@ class DeepGenModel(nn.Module):
         self.freeze_transformer = freeze_transformer
 
         # Load VAE
-        print(f"Loading VAE from: {sd3_path}")
+        print(f"Loading VAE from: {diffusion_path}")
         self.vae = AutoencoderKL.from_pretrained(
-            sd3_path,
+            diffusion_path,
             subfolder="vae",
             torch_dtype=torch_dtype,
         )
@@ -206,11 +206,11 @@ class DeepGenModel(nn.Module):
 
         # Load schedulers
         self.train_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-            sd3_path,
+            diffusion_path,
             subfolder="scheduler",
         )
         self.test_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-            sd3_path,
+            diffusion_path,
             subfolder="scheduler",
         )
 

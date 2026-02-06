@@ -36,7 +36,7 @@ class DeepGenBackend(BaseEditingBackend):
         --num_inference_steps: Number of inference steps (default: 50)
 
     Model-specific parameters via environment variables:
-        DG_DEEPGEN_SD3_PATH: Path to SD3.5 model (transformer, vae, scheduler) - REQUIRED
+        DG_DEEPGEN_DIFFUSION_PATH: Path to diffusion model (transformer, vae, scheduler) - REQUIRED
         DG_DEEPGEN_QWEN_PATH: Path to Qwen2.5-VL model - REQUIRED
         DG_DEEPGEN_GPUS_PER_MODEL: Number of GPUs per model instance (default: 0, use all visible)
         DG_DEEPGEN_CFG_PROMPT: CFG prompt for unconditional generation (default: "")
@@ -91,10 +91,10 @@ class DeepGenBackend(BaseEditingBackend):
         self._env = DeepGenEnv.load()
 
         # Validate required paths
-        if not self._env.sd3_path:
+        if not self._env.diffusion_path:
             raise ValueError(
-                "DG_DEEPGEN_SD3_PATH environment variable is required. "
-                "Set it to the path of your SD3.5 model."
+                "DG_DEEPGEN_DIFFUSION_PATH environment variable is required. "
+                "Set it to the path of your diffusion model (transformer, vae, scheduler)."
             )
         if not self._env.qwen_path:
             raise ValueError(
@@ -115,7 +115,7 @@ class DeepGenBackend(BaseEditingBackend):
         from diffgentor.models.deepgen_v1 import DeepGenModel
 
         print_rank0(f"Loading DeepGen model...")
-        print_rank0(f"  SD3 path: {self._env.sd3_path}")
+        print_rank0(f"  Diffusion path: {self._env.diffusion_path}")
         print_rank0(f"  Qwen path: {self._env.qwen_path}")
         print_rank0(f"  Checkpoint: {self.model_name}")
 
@@ -139,7 +139,7 @@ class DeepGenBackend(BaseEditingBackend):
 
         # Initialize model
         self._model = DeepGenModel(
-            sd3_path=self._env.sd3_path,
+            diffusion_path=self._env.diffusion_path,
             qwen_path=self._env.qwen_path,
             num_queries=self._env.num_queries,
             connector_config=connector_config,
