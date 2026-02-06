@@ -63,6 +63,7 @@ diffgentor edit --backend diffusers \
 | `dreamomni2` | Editing | DreamOmni2 (FLUX.1-Kontext + Qwen2.5-VL) |
 | `flux_kontext_official` | Editing | BFL official Flux Kontext |
 | `hunyuan_image_3` | Editing | Tencent HunyuanImage-3.0-Instruct |
+| `deepgen` | T2I / Editing | DeepGen (Qwen2.5-VL + SD3.5) |
 
 ## Documentation
 
@@ -83,6 +84,7 @@ diffgentor edit --backend diffusers \
 - [DreamOmni2](./docs/editing/dreamomni2.md) - DreamOmni2
 - [Flux Kontext](./docs/editing/flux_kontext.md) - BFL official
 - [HunyuanImage-3.0](./docs/editing/hunyuan_image_3.md) - Tencent HunyuanImage
+- [DeepGen](./docs/editing/deepgen.md) - Qwen2.5-VL + SD3.5
 - [OpenAI](./docs/editing/openai.md) - GPT-Image API
 - [Google GenAI](./docs/editing/google_genai.md) - Gemini
 

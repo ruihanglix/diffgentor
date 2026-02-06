@@ -96,6 +96,33 @@ DG_FLUX_KONTEXT_MAX_SEQUENCE_LENGTH=1024 \
 diffgentor edit --backend flux_kontext_official --model_name /path/to/flux --input data.csv
 ```
 
+## DeepGen
+
+DeepGen is a unified model combining Qwen2.5-VL and SD3.5 for both T2I and image editing.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `DG_DEEPGEN_SD3_PATH` | string | **required** | Path to SD3.5 model |
+| `DG_DEEPGEN_QWEN_PATH` | string | **required** | Path to Qwen2.5-VL model |
+| `DG_DEEPGEN_GPUS_PER_MODEL` | int | `0` | GPUs per model (0 = all visible) |
+| `DG_DEEPGEN_CFG_PROMPT` | string | `""` | CFG prompt for unconditional |
+| `DG_DEEPGEN_NUM_QUERIES` | int | `128` | Number of connector queries |
+| `DG_DEEPGEN_MAX_LENGTH` | int | `1024` | Maximum sequence length |
+| `DG_DEEPGEN_VIT_INPUT_SIZE` | int | `448` | Vision encoder input size |
+| `DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE` | int | `2048` | Connector hidden dimension |
+| `DG_DEEPGEN_CONNECTOR_LAYERS` | int | `6` | Number of connector layers |
+| `DG_DEEPGEN_CONNECTOR_HEADS` | int | `32` | Connector attention heads |
+| `DG_DEEPGEN_ATTN_IMPL` | string | `flash_attention_2` | Attention implementation |
+
+```bash
+DG_DEEPGEN_SD3_PATH=/models/sd3.5-medium \
+DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-7B-Instruct \
+diffgentor edit --backend deepgen \
+    --model_name /checkpoints/deepgen.safetensors \
+    --input data.csv \
+    --guidance_scale 4.0
+```
+
 ## Boolean Values
 
 Boolean environment variables accept:
