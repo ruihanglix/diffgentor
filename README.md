@@ -27,7 +27,7 @@ pip install diffgentor
 ```bash
 git clone --recursive https://github.com/ruihanglix/diffgentor.git
 cd diffgentor
-pip install -e .
+uv sync --extra all --index-strategy unsafe-best-match
 ```
 
 > The `--recursive` flag initializes git submodules for third-party models (Step1X-Edit, BAGEL, Emu3.5, DreamOmni2, etc.)

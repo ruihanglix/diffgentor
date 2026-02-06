@@ -88,7 +88,7 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         default="diffusers",
         choices=[
             "diffusers", "xdit", "openai", "google_genai", "gemini",
-            "step1x", "bagel", "emu35", "dreamomni2", "flux_kontext_official", "hunyuan_image_3",
+            "step1x", "bagel", "emu35", "dreamomni2", "flux_kontext_official", "hunyuan_image_3", "deepgen",
         ],
         help="Backend to use for inference",
     )
