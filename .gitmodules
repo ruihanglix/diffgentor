@@ -1,3 +1,6 @@
 [submodule "diffgentor/models/third_party/emu35"]
 	path = diffgentor/models/third_party/emu35
 	url = https://github.com/diffgentor/Emu3.5
+[submodule "diffgentor/models/third_party/step1x_edit"]
+	path = diffgentor/models/third_party/step1x_edit
+	url = https://github.com/diffgentor/Step1X-Edit
