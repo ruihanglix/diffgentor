@@ -638,7 +638,7 @@ class DeepGenModel(nn.Module):
             negative_pooled_prompt_embeds=pooled_out[b:],
             generator=generator,
             output_type='latent',
-            cond_latents=cond_latents[:b] if cond_latents else None,
+            cond_latents=cond_latents,
         ).images.to(self.dtype)
 
         return self.latents_to_pixels(samples)

@@ -319,7 +319,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
             if self.do_classifier_free_guidance:
                 # Concatenate conditional and unconditional
                 latent_model_input = latents_list + latents_list
-                cond_input = cond_latents + cond_latents if cond_latents is not None else None
+                # cond_latents is already doubled in the generate() method
+                cond_input = cond_latents
                 encoder_hidden_states = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
                 pooled_projections = torch.cat([pooled_prompt_embeds, negative_pooled_prompt_embeds], dim=0)
                 timestep = torch.cat([timestep, timestep], dim=0)
