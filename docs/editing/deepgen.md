@@ -43,6 +43,7 @@ diffgentor edit --backend deepgen \
 | `DG_DEEPGEN_CONNECTOR_LAYERS` | Number of connector layers | `6` |
 | `DG_DEEPGEN_CONNECTOR_HEADS` | Connector attention heads | `32` |
 | `DG_DEEPGEN_ATTN_IMPL` | Attention implementation | `flash_attention_2` |
+| `DG_DEEPGEN_DEBUG` | Debug level for checkpoint loading (0-3) | `0` |
 
 ## Model Files
 
@@ -177,3 +178,87 @@ Text/Image Input
 - **Flash Attention**: Recommended for better performance (`DG_DEEPGEN_ATTN_IMPL=flash_attention_2`)
 - **Checkpoint Format**: Supports both `.safetensors` and `.pt` formats
 - **Dynamic Resolution**: Input images are automatically resized while maintaining aspect ratio
+
+## Debug Mode
+
+Set `DG_DEEPGEN_DEBUG` to enable checkpoint loading debug report. This helps verify that all weights (including LoRA) are loaded correctly.
+
+### Debug Levels
+
+| Level | Output |
+|-------|--------|
+| `0` | Off (default) |
+| `1` | Load summary + LoRA check + zero-weight warnings |
+| `2` | + Full missing/unexpected keys list + LoRA details + key weight stats |
+| `3` | + All loaded keys + all weight statistics |
+
+### Usage
+
+```bash
+# Basic debug (summary only)
+DG_DEEPGEN_DEBUG=1 \
+DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
+DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
+diffgentor edit --backend deepgen \
+    --model_name /checkpoints/deepgen.pt \
+    --input data.csv
+
+# Detailed debug (recommended for troubleshooting)
+DG_DEEPGEN_DEBUG=2 \
+DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
+DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
+diffgentor edit --backend deepgen \
+    --model_name /checkpoints/deepgen.pt \
+    --input data.csv
+```
+
+### Debug Report Location
+
+The debug report is written to `{log_dir}/deepgen_checkpoint_debug.log`.
+
+Only rank 0 writes the debug report in distributed environments.
+
+### Example Debug Report
+
+```
+================================================================================
+DeepGen Checkpoint Load Debug Report
+================================================================================
+Time: 2026-02-06 14:30:25
+Checkpoint: /path/to/checkpoint.pt
+Debug Level: 2
+
+=== Basic Info ===
+Checkpoint file size: 1.20 GB
+Checkpoint keys: 156
+Model trainable keys: 180
+
+=== Load Summary ===
+Successfully loaded: 150 keys
+Missing keys: 30
+Unexpected keys: 6
+
+=== LoRA Weights ===
+LoRA modules in checkpoint: 24
+LoRA modules loaded: 24
+All LoRA weights loaded: YES
+
+=== Weight Statistics ===
+projector_1.weight:
+  shape: (12288, 2048), dtype: torch.bfloat16
+  mean: 0.001234, std: 0.023456
+  min: -0.123456, max: 0.115678
+  non-zero: 100.0% (25165824/25165824)
+
+meta_queries:
+  shape: (128, 3584), dtype: torch.bfloat16
+  mean: 0.000123, std: 0.016789
+  min: -0.089012, max: 0.092345
+  non-zero: 100.0% (458752/458752)
+
+=== Verification Result ===
+[PASS] All checked weights are non-zero
+[PASS] All LoRA weights loaded successfully
+[WARN] 30 missing key(s) (may be expected for frozen components)
+================================================================================
+```

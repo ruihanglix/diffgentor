@@ -150,7 +150,19 @@ class DeepGenBackend(BaseEditingBackend):
 
         # Load checkpoint if provided
         if self.model_name and os.path.exists(self.model_name):
-            self._model.load_checkpoint(self.model_name)
+            from diffgentor.utils.logging import get_log_dir
+            from diffgentor.utils.distributed import is_main_process
+
+            # Only rank 0 writes debug report
+            debug_level = self._env.debug_level if is_main_process() else 0
+            debug_log_path = self._model.load_checkpoint(
+                self.model_name,
+                debug_level=debug_level,
+                debug_log_dir=get_log_dir(),
+            )
+
+            if debug_level > 0 and debug_log_path:
+                print_rank0(f"[DeepGen] Checkpoint debug report written to: {debug_log_path}")
 
         # Move to device
         self._model = self._model.to(dtype=torch_dtype)

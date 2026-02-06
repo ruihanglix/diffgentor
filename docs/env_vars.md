@@ -113,6 +113,18 @@ DeepGen is a unified model combining Qwen2.5-VL and SD3.5 for both T2I and image
 | `DG_DEEPGEN_CONNECTOR_LAYERS` | int | `6` | Number of connector layers |
 | `DG_DEEPGEN_CONNECTOR_HEADS` | int | `32` | Connector attention heads |
 | `DG_DEEPGEN_ATTN_IMPL` | string | `flash_attention_2` | Attention implementation |
+| `DG_DEEPGEN_DEBUG` | int | `0` | Debug level for checkpoint loading (0-3) |
+
+### Debug Levels
+
+| Level | Description |
+|-------|-------------|
+| `0` | Off (default) |
+| `1` | Basic summary + LoRA check + zero-weight warnings |
+| `2` | + Full missing/unexpected keys list + LoRA details + key weight stats |
+| `3` | + All loaded keys + all weight statistics |
+
+Debug report is written to `{log_dir}/deepgen_checkpoint_debug.log`.
 
 ```bash
 DG_DEEPGEN_DIFFUSION_PATH=/models/diffusion_model \

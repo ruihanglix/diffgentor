@@ -294,11 +294,22 @@ class DeepGenModel(nn.Module):
         seq_out = self.projector_3(x)
         return pooled_out, seq_out
 
-    def load_checkpoint(self, checkpoint_path: str) -> None:
+    def load_checkpoint(
+        self,
+        checkpoint_path: str,
+        debug_level: int = 0,
+        debug_log_dir: Optional[str] = None,
+    ) -> Optional[str]:
         """Load a checkpoint file.
 
         Args:
             checkpoint_path: Path to checkpoint (.pt, .pth, or .safetensors)
+            debug_level: Debug level for checkpoint loading report
+                0 = off (default), 1 = basic summary, 2 = detailed, 3 = verbose
+            debug_log_dir: Directory for debug log file (default: current dir or log_dir)
+
+        Returns:
+            Path to debug log file if debug_level > 0, otherwise None
         """
         print(f"Loading checkpoint from: {checkpoint_path}")
         state_dict = load_checkpoint(checkpoint_path)
@@ -307,6 +318,190 @@ class DeepGenModel(nn.Module):
             print(f"Missing keys ({len(missing)}): {missing[:10]}...")
         if unexpected:
             print(f"Unexpected keys ({len(unexpected)}): {unexpected[:10]}...")
+
+        # Write debug report if enabled
+        debug_log_path = None
+        if debug_level > 0:
+            debug_log_path = self._write_debug_report(
+                checkpoint_path=checkpoint_path,
+                checkpoint_state_dict=state_dict,
+                missing_keys=missing,
+                unexpected_keys=unexpected,
+                debug_level=debug_level,
+                debug_log_dir=debug_log_dir,
+            )
+
+        return debug_log_path
+
+    def _write_debug_report(
+        self,
+        checkpoint_path: str,
+        checkpoint_state_dict: Dict[str, torch.Tensor],
+        missing_keys: List[str],
+        unexpected_keys: List[str],
+        debug_level: int,
+        debug_log_dir: Optional[str] = None,
+    ) -> str:
+        """Write checkpoint load debug report to a separate log file.
+
+        Args:
+            checkpoint_path: Path to checkpoint file
+            checkpoint_state_dict: Loaded state dict from checkpoint
+            missing_keys: Keys missing from checkpoint
+            unexpected_keys: Keys in checkpoint but not in model
+            debug_level: Debug verbosity level (1-3)
+            debug_log_dir: Directory for debug log file
+
+        Returns:
+            Path to the debug log file
+        """
+        from datetime import datetime
+
+        # Determine log directory
+        if debug_log_dir:
+            log_dir = Path(debug_log_dir)
+        else:
+            log_dir = Path(".")
+
+        log_dir.mkdir(parents=True, exist_ok=True)
+        debug_log_path = log_dir / "deepgen_checkpoint_debug.log"
+
+        # Get model's current state_dict (for verification)
+        model_state_dict = self.state_dict()
+
+        # Calculate successfully loaded keys
+        loaded_keys = [k for k in checkpoint_state_dict.keys() if k not in unexpected_keys]
+
+        # Detect LoRA keys
+        lora_keys_in_ckpt = [k for k in checkpoint_state_dict.keys() if "lora_" in k]
+        lora_keys_loaded = [k for k in loaded_keys if "lora_" in k]
+        lora_keys_missing = [k for k in lora_keys_in_ckpt if k not in lora_keys_loaded]
+
+        with open(debug_log_path, "w", encoding="utf-8") as f:
+            # Header
+            f.write("=" * 80 + "\n")
+            f.write("DeepGen Checkpoint Load Debug Report\n")
+            f.write("=" * 80 + "\n")
+            f.write(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Checkpoint: {checkpoint_path}\n")
+            f.write(f"Debug Level: {debug_level}\n\n")
+
+            # Basic info
+            f.write("=== Basic Info ===\n")
+            try:
+                ckpt_size = Path(checkpoint_path).stat().st_size / (1024**3)
+                f.write(f"Checkpoint file size: {ckpt_size:.2f} GB\n")
+            except OSError:
+                f.write("Checkpoint file size: N/A\n")
+            f.write(f"Checkpoint keys: {len(checkpoint_state_dict)}\n")
+            f.write(f"Model trainable keys: {len(model_state_dict)}\n\n")
+
+            # Load summary
+            f.write("=== Load Summary ===\n")
+            f.write(f"Successfully loaded: {len(loaded_keys)} keys\n")
+            f.write(f"Missing keys: {len(missing_keys)}\n")
+            f.write(f"Unexpected keys: {len(unexpected_keys)}\n\n")
+
+            # Level 2+: Full missing/unexpected keys list
+            if debug_level >= 2:
+                if missing_keys:
+                    f.write(f"=== Missing Keys ({len(missing_keys)}) ===\n")
+                    for k in sorted(missing_keys):
+                        f.write(f"  {k}\n")
+                    f.write("\n")
+
+                if unexpected_keys:
+                    f.write(f"=== Unexpected Keys ({len(unexpected_keys)}) ===\n")
+                    for k in sorted(unexpected_keys):
+                        f.write(f"  {k}\n")
+                    f.write("\n")
+
+            # LoRA check
+            f.write("=== LoRA Weights ===\n")
+            f.write(f"LoRA modules in checkpoint: {len(lora_keys_in_ckpt)}\n")
+            f.write(f"LoRA modules loaded: {len(lora_keys_loaded)}\n")
+            lora_all_loaded = len(lora_keys_in_ckpt) == len(lora_keys_loaded) and len(lora_keys_in_ckpt) > 0
+            if lora_keys_in_ckpt:
+                f.write(f"All LoRA weights loaded: {'YES' if lora_all_loaded else 'NO'}\n")
+            else:
+                f.write("No LoRA weights in checkpoint\n")
+
+            if debug_level >= 2 and lora_keys_in_ckpt:
+                f.write("\nLoRA modules:\n")
+                for k in sorted(lora_keys_in_ckpt):
+                    status = "✓" if k in lora_keys_loaded else "✗"
+                    f.write(f"  [{status}] {k}\n")
+            f.write("\n")
+
+            # Level 3: All successfully loaded keys
+            if debug_level >= 3:
+                f.write(f"=== Successfully Loaded Keys ({len(loaded_keys)}) ===\n")
+                for k in sorted(loaded_keys):
+                    f.write(f"  {k}\n")
+                f.write("\n")
+
+            # Weight statistics and non-zero verification
+            f.write("=== Weight Statistics ===\n")
+            zero_weights = []
+
+            # Select keys to check based on debug level
+            key_components = ["projector_1", "projector_2", "projector_3", "meta_queries", "connector"]
+            if debug_level >= 3:
+                # Level 3: Check all loaded weights
+                check_keys = [k for k in loaded_keys if k in model_state_dict]
+            else:
+                # Level 1-2: Only check key components
+                check_keys = [k for k in loaded_keys if any(c in k for c in key_components)]
+
+            for key in sorted(check_keys):
+                if key in model_state_dict:
+                    tensor = model_state_dict[key]
+                    if tensor.numel() > 0:
+                        # Convert to float for statistics
+                        tensor_float = tensor.float()
+                        mean_val = tensor_float.mean().item()
+                        std_val = tensor_float.std().item()
+                        min_val = tensor_float.min().item()
+                        max_val = tensor_float.max().item()
+                        nonzero_count = (tensor != 0).sum().item()
+                        nonzero_pct = nonzero_count / tensor.numel() * 100
+
+                        f.write(f"{key}:\n")
+                        f.write(f"  shape: {tuple(tensor.shape)}, dtype: {tensor.dtype}\n")
+                        f.write(f"  mean: {mean_val:.6f}, std: {std_val:.6f}\n")
+                        f.write(f"  min: {min_val:.6f}, max: {max_val:.6f}\n")
+                        f.write(f"  non-zero: {nonzero_pct:.1f}% ({nonzero_count}/{tensor.numel()})\n")
+
+                        if nonzero_pct == 0:
+                            zero_weights.append(key)
+            f.write("\n")
+
+            # Verification result
+            f.write("=== Verification Result ===\n")
+            if zero_weights:
+                f.write(f"[FAIL] Found {len(zero_weights)} zero-weight tensor(s):\n")
+                for k in zero_weights:
+                    f.write(f"  - {k}\n")
+            else:
+                f.write("[PASS] All checked weights are non-zero\n")
+
+            if lora_keys_in_ckpt:
+                if lora_all_loaded:
+                    f.write("[PASS] All LoRA weights loaded successfully\n")
+                else:
+                    f.write(f"[FAIL] {len(lora_keys_missing)} LoRA weight(s) failed to load:\n")
+                    for k in lora_keys_missing:
+                        f.write(f"  - {k}\n")
+
+            if missing_keys:
+                f.write(f"[WARN] {len(missing_keys)} missing key(s) (may be expected for frozen components)\n")
+
+            if unexpected_keys:
+                f.write(f"[WARN] {len(unexpected_keys)} unexpected key(s) in checkpoint\n")
+
+            f.write("=" * 80 + "\n")
+
+        return str(debug_log_path)
 
     def state_dict(self, *args, **kwargs) -> Dict[str, torch.Tensor]:
         """Get state dict excluding frozen components."""

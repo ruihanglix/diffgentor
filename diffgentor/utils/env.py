@@ -473,6 +473,8 @@ class DeepGenEnv(ModelEnvConfig):
         DG_DEEPGEN_CONNECTOR_LAYERS: Number of connector layers (default: 6)
         DG_DEEPGEN_CONNECTOR_HEADS: Number of connector attention heads (default: 32)
         DG_DEEPGEN_ATTN_IMPL: Attention implementation (default: flash_attention_2)
+        DG_DEEPGEN_DEBUG: Debug level for checkpoint loading (default: 0)
+            0 = off, 1 = basic summary, 2 = detailed report, 3 = verbose with all keys
 
     Note: guidance_scale should be passed via CLI argument --guidance_scale, not env var.
 
@@ -501,6 +503,7 @@ class DeepGenEnv(ModelEnvConfig):
     connector_layers: int = 6
     connector_heads: int = 32
     attn_impl: str = "flash_attention_2"
+    debug_level: int = 0
 
     @classmethod
     def load(cls) -> "DeepGenEnv":
@@ -516,6 +519,7 @@ class DeepGenEnv(ModelEnvConfig):
             connector_layers=get_env_int("DEEPGEN_CONNECTOR_LAYERS", 6),
             connector_heads=get_env_int("DEEPGEN_CONNECTOR_HEADS", 32),
             attn_impl=get_env_str("DEEPGEN_ATTN_IMPL", "flash_attention_2"),
+            debug_level=get_env_int("DEEPGEN_DEBUG", 0),
         )
 
     @staticmethod
