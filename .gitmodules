@@ -10,3 +10,6 @@
 [submodule "diffgentor/models/third_party/dreamomni2"]
 	path = diffgentor/models/third_party/dreamomni2
 	url = https://github.com/diffgentor/DreamOmni2
+[submodule "diffgentor/models/third_party/flux1"]
+	path = diffgentor/models/third_party/flux1
+	url = https://github.com/diffgentor/flux
