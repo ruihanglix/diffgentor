@@ -412,14 +412,26 @@ class DeepGenModel(nn.Module):
         """Get semantic features with dynamic resolution.
 
         Args:
-            pixel_values: List of pixel tensors
+            pixel_values: List of pixel tensors, each of shape (C, H, W)
 
         Returns:
             Tuple of (image_embeds, image_grid_thw)
         """
-        # Scale from 512 to 448 (28/32)
-        pixel_values = [F.interpolate(p[None], scale_factor=28 / 32, mode="bilinear") for p in pixel_values]
-        image_embeds, image_grid_thw = multi_apply(self.get_semantic_features, pixel_values, resize=False)
+        # Scale images and ensure dimensions are multiples of 28 (patch_size * spatial_merge_size)
+        # This is required for proper ViT processing
+        scaled_pixel_values = []
+        for p in pixel_values:
+            h, w = p.shape[-2:]
+            # Scale by 28/32 and round to nearest multiple of 28
+            target_h = round(h * 28 / 32 / 28) * 28
+            target_w = round(w * 28 / 32 / 28) * 28
+            # Ensure minimum size of 28
+            target_h = max(target_h, 28)
+            target_w = max(target_w, 28)
+            scaled = F.interpolate(p[None], size=(target_h, target_w), mode="bilinear")
+            scaled_pixel_values.append(scaled)
+
+        image_embeds, image_grid_thw = multi_apply(self.get_semantic_features, scaled_pixel_values, resize=False)
         image_embeds = [x[0] for x in image_embeds]
         image_grid_thw = torch.cat(image_grid_thw, dim=0)
         return image_embeds, image_grid_thw

@@ -8,7 +8,8 @@ DeepGen is a unified visual generation model based on AR (Qwen2.5-VL) + Diffusio
 supporting both text-to-image generation and image editing.
 """
 
-from typing import List, Optional, Union
+import math
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -19,6 +20,43 @@ from diffgentor.backends.base import BaseEditingBackend
 from diffgentor.config import BackendConfig, OptimizationConfig
 from diffgentor.utils.env import DeepGenEnv
 from diffgentor.utils.logging import print_rank0
+
+
+def resize_for_deepgen(image: Image.Image, max_size: int = 512, unit_size: int = 32) -> Tuple[Image.Image, int, int]:
+    """Resize image for DeepGen model.
+
+    Ensures the image dimensions are multiples of unit_size (32) for proper
+    processing by the vision transformer. After 28/32 scaling in the model,
+    the dimensions will be multiples of 28, which is divisible by patch_size (14)
+    and spatial_merge_size (2).
+
+    Args:
+        image: Input PIL image
+        max_size: Maximum size for the longer edge (should be multiple of 32)
+        unit_size: Unit size for alignment (default: 32)
+
+    Returns:
+        Tuple of (resized_image, target_width, target_height)
+    """
+    w, h = image.size
+
+    if w >= h and w >= max_size:
+        target_w = max_size
+        target_h = h * (target_w / w)
+        target_h = math.ceil(target_h / unit_size) * unit_size
+    elif h >= w and h >= max_size:
+        target_h = max_size
+        target_w = w * (target_h / h)
+        target_w = math.ceil(target_w / unit_size) * unit_size
+    else:
+        target_h = math.ceil(h / unit_size) * unit_size
+        target_w = math.ceil(w / unit_size) * unit_size
+
+    target_w = int(target_w)
+    target_h = int(target_h)
+
+    resized = image.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    return resized, target_w, target_h
 
 
 class DeepGenEditingBackend(BaseEditingBackend):
@@ -119,8 +157,8 @@ class DeepGenEditingBackend(BaseEditingBackend):
             guidance_scale: Guidance scale (default: 4.0)
             negative_prompt: Negative prompt for CFG (default: "")
             seed: Random seed
-            height: Output height (default: input image height)
-            width: Output width (default: input image width)
+            height: Output height (default: aligned to 32)
+            width: Output width (default: aligned to 32)
             **kwargs: Additional arguments
 
         Returns:
@@ -144,22 +182,17 @@ class DeepGenEditingBackend(BaseEditingBackend):
         if negative_prompt is None:
             negative_prompt = ""
 
-        # Determine output size from input image if not specified
-        if height is None:
-            height = images[0].height
-        if width is None:
-            width = images[0].width
-
         # Set seed
         generator = None
         if seed is not None:
             generator = torch.Generator(device=self._model.device).manual_seed(seed)
 
-        # Convert PIL images to tensors
+        # Convert PIL images to tensors with proper resizing
+        # Images must be resized to dimensions that are multiples of 32
         pixel_values = []
         for img in images:
-            # Resize to target size
-            img_resized = img.resize((width, height))
+            # Resize image to proper dimensions (multiples of 32)
+            img_resized, target_w, target_h = resize_for_deepgen(img, max_size=512, unit_size=32)
             # Convert to tensor
             img_tensor = torch.from_numpy(np.array(img_resized)).to(
                 dtype=self._model.dtype, device=self._model.device
@@ -168,6 +201,14 @@ class DeepGenEditingBackend(BaseEditingBackend):
             # Normalize to [-1, 1]
             img_tensor = 2 * (img_tensor / 255) - 1
             pixel_values.append(img_tensor)
+
+        # Use the first image's resized dimensions for output if not specified
+        if height is None or width is None:
+            _, out_w, out_h = resize_for_deepgen(images[0], max_size=512, unit_size=32)
+            if height is None:
+                height = out_h
+            if width is None:
+                width = out_w
 
         # Run inference
         output = self._model.generate_edit(

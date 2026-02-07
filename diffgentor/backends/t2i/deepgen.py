@@ -8,6 +8,7 @@ DeepGen is a unified visual generation model based on AR (Qwen2.5-VL) + Diffusio
 supporting both text-to-image generation and image editing.
 """
 
+import math
 from typing import List, Optional, Union
 
 import torch
@@ -18,6 +19,11 @@ from diffgentor.backends.base import BaseBackend
 from diffgentor.config import BackendConfig, OptimizationConfig
 from diffgentor.utils.env import DeepGenEnv
 from diffgentor.utils.logging import print_rank0
+
+
+def align_to_unit(value: int, unit: int = 32) -> int:
+    """Align value to the nearest multiple of unit (ceiling)."""
+    return math.ceil(value / unit) * unit
 
 
 class DeepGenT2IBackend(BaseBackend):
@@ -130,7 +136,7 @@ class DeepGenT2IBackend(BaseBackend):
         if isinstance(prompt, str):
             prompt = [prompt]
 
-        # Apply defaults
+        # Apply defaults and align to 32
         if num_inference_steps is None:
             num_inference_steps = 50
         if guidance_scale is None:
@@ -139,6 +145,10 @@ class DeepGenT2IBackend(BaseBackend):
             height = 512
         if width is None:
             width = 512
+
+        # Align dimensions to multiples of 32 for proper ViT processing
+        height = align_to_unit(height, 32)
+        width = align_to_unit(width, 32)
 
         # Handle negative prompt
         if negative_prompt is None:
