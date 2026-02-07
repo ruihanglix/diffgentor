@@ -26,15 +26,17 @@ class DeepGenEditingBackend(BaseEditingBackend):
 
     Uses Qwen2.5-VL for vision-language understanding and SD3.5 for image generation.
 
+    CLI parameters:
+        --guidance_scale: CFG guidance scale (default: 4.0)
+        --num_inference_steps: Number of inference steps (default: 50)
+        --height: Output image height (default: 512)
+        --width: Output image width (default: 512)
+
     Model-specific parameters via environment variables:
         DG_DEEPGEN_SD3_MODEL_PATH: Path to SD3.5 model (required if not using model_name)
         DG_DEEPGEN_QWEN_MODEL_PATH: Path to Qwen2.5-VL model (required if not using model_name)
         DG_DEEPGEN_CHECKPOINT: Path to model checkpoint (optional)
-        DG_DEEPGEN_CFG_SCALE: CFG guidance scale (default: 4.0)
         DG_DEEPGEN_CFG_PROMPT: CFG negative prompt (default: "")
-        DG_DEEPGEN_HEIGHT: Output image height (default: 512)
-        DG_DEEPGEN_WIDTH: Output image width (default: 512)
-        DG_DEEPGEN_NUM_STEPS: Number of inference steps (default: 50)
         DG_DEEPGEN_NUM_QUERIES: Number of query tokens (default: 128)
         DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE: Connector hidden size (default: 2048)
         DG_DEEPGEN_CONNECTOR_NUM_LAYERS: Number of connector layers (default: 6)
@@ -164,11 +166,11 @@ class DeepGenEditingBackend(BaseEditingBackend):
         # Convert images to RGB
         images = [img.convert("RGB") for img in images]
 
-        # Apply defaults
+        # Apply defaults - use CLI values or model defaults
         if num_inference_steps is None:
             num_inference_steps = self._env.default_num_steps()
         if guidance_scale is None:
-            guidance_scale = self._env.cfg_scale_default()
+            guidance_scale = 4.0  # Default CFG scale for DeepGen
 
         # Determine output size
         if height is None:

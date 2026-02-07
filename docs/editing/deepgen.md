@@ -49,6 +49,16 @@ diffgentor t2i --backend deepgen \
     --output_dir ./output
 ```
 
+## CLI Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--guidance_scale` | CFG guidance scale | `4.0` |
+| `--num_inference_steps` | Number of denoising steps | `50` |
+| `--height` | Output image height | `512` |
+| `--width` | Output image width | `512` |
+| `--seed` | Random seed | Random |
+
 ## Environment Variables
 
 | Variable | Description | Default |
@@ -56,11 +66,10 @@ diffgentor t2i --backend deepgen \
 | `DG_DEEPGEN_SD3_MODEL_PATH` | Path to SD3.5 model | Required |
 | `DG_DEEPGEN_QWEN_MODEL_PATH` | Path to Qwen2.5-VL model | Required |
 | `DG_DEEPGEN_CHECKPOINT` | Path to model checkpoint | None |
-| `DG_DEEPGEN_CFG_SCALE` | CFG guidance scale | `4.0` |
 | `DG_DEEPGEN_CFG_PROMPT` | CFG negative prompt | `""` |
-| `DG_DEEPGEN_HEIGHT` | Output image height | `512` |
-| `DG_DEEPGEN_WIDTH` | Output image width | `512` |
-| `DG_DEEPGEN_NUM_STEPS` | Number of inference steps | `50` |
+| `DG_DEEPGEN_HEIGHT` | Default output image height | `512` |
+| `DG_DEEPGEN_WIDTH` | Default output image width | `512` |
+| `DG_DEEPGEN_NUM_STEPS` | Default number of inference steps | `50` |
 | `DG_DEEPGEN_NUM_QUERIES` | Number of query tokens | `128` |
 | `DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE` | Connector hidden size | `2048` |
 | `DG_DEEPGEN_CONNECTOR_NUM_LAYERS` | Number of connector layers | `6` |
@@ -109,12 +118,12 @@ diffgentor edit --backend deepgen \
 DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
-DG_DEEPGEN_CFG_SCALE=6.0 \
-DG_DEEPGEN_NUM_STEPS=30 \
 diffgentor edit --backend deepgen \
     --model_name deepgen \
     --input data.csv \
-    --output_dir ./output
+    --output_dir ./output \
+    --guidance_scale 6.0 \
+    --num_inference_steps 30
 ```
 
 ### Higher Resolution Output
@@ -123,12 +132,12 @@ diffgentor edit --backend deepgen \
 DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
-DG_DEEPGEN_HEIGHT=1024 \
-DG_DEEPGEN_WIDTH=1024 \
 diffgentor edit --backend deepgen \
     --model_name deepgen \
     --input data.csv \
-    --output_dir ./output
+    --output_dir ./output \
+    --height 1024 \
+    --width 1024
 ```
 
 ### Alternative Model Path Specification
@@ -146,9 +155,11 @@ diffgentor edit --backend deepgen \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--num_inference_steps` | Number of denoising steps | 50 |
+| `--num_inference_steps` | Number of denoising steps | 50 (or `DG_DEEPGEN_NUM_STEPS`) |
 | `--guidance_scale` | CFG guidance scale | 4.0 |
 | `--seed` | Random seed | Random |
+| `--height` | Output image height | 512 (or `DG_DEEPGEN_HEIGHT`) |
+| `--width` | Output image width | 512 (or `DG_DEEPGEN_WIDTH`) |
 
 ## Notes
 

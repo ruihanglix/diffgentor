@@ -461,15 +461,20 @@ class DeepGenEnv(ModelEnvConfig):
     DeepGen is a unified visual generation model based on Qwen2.5-VL + SD3.5,
     supporting both text-to-image generation and image editing.
 
-    Environment variables:
+    CLI parameters (common across backends):
+        --guidance_scale: CFG guidance scale (default: 4.0)
+        --num_inference_steps: Number of inference steps (default: 50)
+        --height: Output image height (default: 512)
+        --width: Output image width (default: 512)
+
+    Environment variables (model-specific):
         DG_DEEPGEN_SD3_MODEL_PATH: Path to SD3.5 model (required if not using model_name)
         DG_DEEPGEN_QWEN_MODEL_PATH: Path to Qwen2.5-VL model (required if not using model_name)
         DG_DEEPGEN_CHECKPOINT: Path to model checkpoint (optional)
-        DG_DEEPGEN_CFG_SCALE: CFG guidance scale (default: 4.0)
         DG_DEEPGEN_CFG_PROMPT: CFG negative prompt (default: "")
-        DG_DEEPGEN_HEIGHT: Output image height (default: 512)
-        DG_DEEPGEN_WIDTH: Output image width (default: 512)
-        DG_DEEPGEN_NUM_STEPS: Number of inference steps (default: 50)
+        DG_DEEPGEN_HEIGHT: Default output image height (default: 512)
+        DG_DEEPGEN_WIDTH: Default output image width (default: 512)
+        DG_DEEPGEN_NUM_STEPS: Default number of inference steps (default: 50)
         DG_DEEPGEN_NUM_QUERIES: Number of query tokens (default: 128)
         DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE: Connector hidden size (default: 2048)
         DG_DEEPGEN_CONNECTOR_NUM_LAYERS: Number of connector layers (default: 6)
@@ -481,7 +486,6 @@ class DeepGenEnv(ModelEnvConfig):
     sd3_model_path: Optional[str] = None
     qwen_model_path: Optional[str] = None
     checkpoint: Optional[str] = None
-    cfg_scale: float = 4.0
     cfg_prompt: str = ""
     height: int = 512
     width: int = 512
@@ -498,7 +502,6 @@ class DeepGenEnv(ModelEnvConfig):
             sd3_model_path=get_env_str("DEEPGEN_SD3_MODEL_PATH"),
             qwen_model_path=get_env_str("DEEPGEN_QWEN_MODEL_PATH"),
             checkpoint=get_env_str("DEEPGEN_CHECKPOINT"),
-            cfg_scale=get_env_float("DEEPGEN_CFG_SCALE", 4.0),
             cfg_prompt=get_env_str("DEEPGEN_CFG_PROMPT", ""),
             height=get_env_int("DEEPGEN_HEIGHT", 512),
             width=get_env_int("DEEPGEN_WIDTH", 512),
@@ -524,11 +527,6 @@ class DeepGenEnv(ModelEnvConfig):
     def checkpoint_path() -> Optional[str]:
         """Get checkpoint path from environment."""
         return get_env_str("DEEPGEN_CHECKPOINT")
-
-    @staticmethod
-    def cfg_scale_default() -> float:
-        """Get default CFG scale from environment."""
-        return get_env_float("DEEPGEN_CFG_SCALE", 4.0)
 
     @staticmethod
     def cfg_prompt_default() -> str:

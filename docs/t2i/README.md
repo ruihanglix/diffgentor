@@ -81,17 +81,20 @@ export DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl
 
 diffgentor t2i --backend deepgen \
     --model_name /path/to/deepgen_checkpoint \
-    --prompt "A futuristic cityscape"
+    --prompt "A futuristic cityscape" \
+    --guidance_scale 4.0
 ```
+
+**CLI Parameters:**
+- `--guidance_scale`: CFG guidance scale (default: 4.0)
+- `--num_inference_steps`: Inference steps (default: 50)
+- `--height`: Output height (default: 512)
+- `--width`: Output width (default: 512)
 
 **Environment Variables:**
 - `DG_DEEPGEN_SD3_MODEL_PATH`: Path to SD3.5 model (required)
 - `DG_DEEPGEN_QWEN_MODEL_PATH`: Path to Qwen2.5-VL model (required)
 - `DG_DEEPGEN_CHECKPOINT`: Path to model checkpoint (optional)
-- `DG_DEEPGEN_CFG_SCALE`: CFG guidance scale (default: 4.0)
-- `DG_DEEPGEN_HEIGHT`: Output height (default: 512)
-- `DG_DEEPGEN_WIDTH`: Output width (default: 512)
-- `DG_DEEPGEN_NUM_STEPS`: Inference steps (default: 50)
 
 See [DeepGen Guide](deepgen.md) for details.
 

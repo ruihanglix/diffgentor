@@ -177,7 +177,8 @@ DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
 diffgentor edit --backend deepgen \
     --model_name /path/to/deepgen_checkpoint \
-    --input data.csv
+    --input data.csv \
+    --guidance_scale 4.0
 ```
 
 ## Output
