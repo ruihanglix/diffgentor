@@ -605,8 +605,11 @@ class DeepGenModel(nn.Module):
         """
         # Normalize to [0, 1] then apply VIT normalization
         pixel_values = (pixel_values + 1.0) / 2
-        pixel_values = pixel_values - self.vit_mean.view(1, 3, 1, 1)
-        pixel_values = pixel_values / self.vit_std.view(1, 3, 1, 1)
+        # Ensure vit_mean and vit_std are on the same device as pixel_values
+        vit_mean = self.vit_mean.to(pixel_values.device).view(1, 3, 1, 1)
+        vit_std = self.vit_std.to(pixel_values.device).view(1, 3, 1, 1)
+        pixel_values = pixel_values - vit_mean
+        pixel_values = pixel_values / vit_std
 
         if resize:
             pixel_values = F.interpolate(pixel_values, size=(self.vit_input_size, self.vit_input_size),
@@ -819,7 +822,9 @@ class DeepGenModel(nn.Module):
             cond_latents = None
 
         # Forward through LLM
-        hidden_states = self.meta_queries[None].expand(2 * b, self.num_queries, -1)
+        # Ensure meta_queries is on the correct device
+        meta_queries = self.meta_queries.to(self.device)
+        hidden_states = meta_queries[None].expand(2 * b, self.num_queries, -1)
         inputs = self.prepare_forward_input(query_embeds=hidden_states, **text_inputs)
 
         output = self.llm(**inputs, return_dict=True, output_hidden_states=True)

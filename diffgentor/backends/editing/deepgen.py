@@ -154,8 +154,28 @@ class DeepGenBackend(BaseEditingBackend):
             if debug_level > 0 and debug_log_path:
                 print_rank0(f"[DeepGen] Checkpoint debug report written to: {debug_log_path}")
 
-        # Move to device
-        self._model = self._model.to(dtype=torch_dtype)
+        # Move non-LMM components to the correct device
+        # LMM uses device_map="auto", but other components need explicit device placement
+        device = self._model.device  # Get device from LMM
+        print_rank0(f"[DeepGen] Moving model components to device: {device}")
+
+        # Move connector and projectors
+        self._model.connector = self._model.connector.to(device=device, dtype=torch_dtype)
+        self._model.projector_1 = self._model.projector_1.to(device=device, dtype=torch_dtype)
+        self._model.projector_2 = self._model.projector_2.to(device=device, dtype=torch_dtype)
+        self._model.projector_3 = self._model.projector_3.to(device=device, dtype=torch_dtype)
+
+        # Move transformer and VAE to cuda:0 (they don't use device_map)
+        self._model.transformer = self._model.transformer.to(device="cuda:0", dtype=torch_dtype)
+        self._model.vae = self._model.vae.to(device="cuda:0", dtype=torch_dtype)
+
+        # Move meta_queries parameter
+        self._model.meta_queries.data = self._model.meta_queries.data.to(device=device, dtype=torch_dtype)
+
+        # Move buffers
+        self._model.vit_mean = self._model.vit_mean.to(device=device)
+        self._model.vit_std = self._model.vit_std.to(device=device)
+
         self._model.eval()
 
         self._initialized = True
