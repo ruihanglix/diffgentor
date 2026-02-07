@@ -104,16 +104,14 @@ DeepGen is a unified model combining Qwen2.5-VL and SD3.5 for both T2I and image
 |----------|------|---------|-------------|
 | `DG_DEEPGEN_DIFFUSION_PATH` | string | **required** | Path to diffusion model |
 | `DG_DEEPGEN_QWEN_PATH` | string | **required** | Path to Qwen2.5-VL model |
+| `DG_DEEPGEN_CONFIG` | string | `deepgen_v1` | Config name from `configs/` folder |
 | `DG_DEEPGEN_GPUS_PER_MODEL` | int | `0` | GPUs per model (0 = all visible) |
 | `DG_DEEPGEN_CFG_PROMPT` | string | `""` | CFG prompt for unconditional |
-| `DG_DEEPGEN_NUM_QUERIES` | int | `128` | Number of connector queries |
-| `DG_DEEPGEN_MAX_LENGTH` | int | `1024` | Maximum sequence length |
-| `DG_DEEPGEN_VIT_INPUT_SIZE` | int | `448` | Vision encoder input size |
-| `DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE` | int | `2048` | Connector hidden dimension |
-| `DG_DEEPGEN_CONNECTOR_LAYERS` | int | `6` | Number of connector layers |
-| `DG_DEEPGEN_CONNECTOR_HEADS` | int | `32` | Connector attention heads |
-| `DG_DEEPGEN_ATTN_IMPL` | string | `flash_attention_2` | Attention implementation |
 | `DG_DEEPGEN_DEBUG` | int | `0` | Debug level for checkpoint loading (0-3) |
+
+### Config-Based Architecture
+
+Model-specific parameters (connector config, num_queries, etc.) are defined in config files located at `diffgentor/models/deepgen_v1/configs/`. The config file is selected via `DG_DEEPGEN_CONFIG`.
 
 ### Debug Levels
 
@@ -129,6 +127,7 @@ Debug report is written to `{log_dir}/deepgen_checkpoint_debug.log`.
 ```bash
 DG_DEEPGEN_DIFFUSION_PATH=/models/diffusion_model \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-7B-Instruct \
+DG_DEEPGEN_CONFIG=deepgen_v1 \
 diffgentor edit --backend deepgen \
     --model_name /checkpoints/deepgen.pt \
     --input data.csv \

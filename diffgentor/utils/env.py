@@ -464,19 +464,14 @@ class DeepGenEnv(ModelEnvConfig):
     Environment variables:
         DG_DEEPGEN_DIFFUSION_PATH: Path to diffusion model (transformer, vae, scheduler)
         DG_DEEPGEN_QWEN_PATH: Path to Qwen2.5-VL model
+        DG_DEEPGEN_CONFIG: Config name to load from configs/ folder (default: deepgen_v1)
         DG_DEEPGEN_GPUS_PER_MODEL: Number of GPUs per model instance (default: 0, use all visible)
         DG_DEEPGEN_CFG_PROMPT: CFG prompt for unconditional generation (default: "")
-        DG_DEEPGEN_NUM_QUERIES: Number of query tokens for connector (default: 128)
-        DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
-        DG_DEEPGEN_VIT_INPUT_SIZE: Vision encoder input size (default: 448)
-        DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE: Connector hidden size (default: 2048)
-        DG_DEEPGEN_CONNECTOR_LAYERS: Number of connector layers (default: 6)
-        DG_DEEPGEN_CONNECTOR_HEADS: Number of connector attention heads (default: 32)
-        DG_DEEPGEN_ATTN_IMPL: Attention implementation (default: flash_attention_2)
         DG_DEEPGEN_DEBUG: Debug level for checkpoint loading (default: 0)
             0 = off, 1 = basic summary, 2 = detailed report, 3 = verbose with all keys
 
-    Note: guidance_scale should be passed via CLI argument --guidance_scale, not env var.
+    Note: Model-specific parameters (num_queries, connector config, etc.) are defined in
+    the config file specified by DG_DEEPGEN_CONFIG.
 
     Multi-GPU Usage:
         The Launcher automatically handles GPU assignment based on DG_DEEPGEN_GPUS_PER_MODEL.
@@ -494,15 +489,9 @@ class DeepGenEnv(ModelEnvConfig):
     _prefix: str = field(default="DEEPGEN", repr=False)
     diffusion_path: Optional[str] = None
     qwen_path: Optional[str] = None
+    config: str = "deepgen_v1"
     _gpus_per_model: int = field(default=0, repr=False)
     cfg_prompt: str = ""
-    num_queries: int = 128
-    max_length: int = 1024
-    vit_input_size: int = 448
-    connector_hidden_size: int = 2048
-    connector_layers: int = 6
-    connector_heads: int = 32
-    attn_impl: str = "flash_attention_2"
     debug_level: int = 0
 
     @classmethod
@@ -510,15 +499,9 @@ class DeepGenEnv(ModelEnvConfig):
         return cls(
             diffusion_path=get_env_str("DEEPGEN_DIFFUSION_PATH"),
             qwen_path=get_env_str("DEEPGEN_QWEN_PATH"),
+            config=get_env_str("DEEPGEN_CONFIG", "deepgen_v1"),
             _gpus_per_model=get_env_int("DEEPGEN_GPUS_PER_MODEL", 0),
             cfg_prompt=get_env_str("DEEPGEN_CFG_PROMPT", ""),
-            num_queries=get_env_int("DEEPGEN_NUM_QUERIES", 128),
-            max_length=get_env_int("DEEPGEN_MAX_LENGTH", 1024),
-            vit_input_size=get_env_int("DEEPGEN_VIT_INPUT_SIZE", 448),
-            connector_hidden_size=get_env_int("DEEPGEN_CONNECTOR_HIDDEN_SIZE", 2048),
-            connector_layers=get_env_int("DEEPGEN_CONNECTOR_LAYERS", 6),
-            connector_heads=get_env_int("DEEPGEN_CONNECTOR_HEADS", 32),
-            attn_impl=get_env_str("DEEPGEN_ATTN_IMPL", "flash_attention_2"),
             debug_level=get_env_int("DEEPGEN_DEBUG", 0),
         )
 

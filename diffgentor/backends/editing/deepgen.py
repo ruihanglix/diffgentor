@@ -38,15 +38,14 @@ class DeepGenBackend(BaseEditingBackend):
     Model-specific parameters via environment variables:
         DG_DEEPGEN_DIFFUSION_PATH: Path to diffusion model (transformer, vae, scheduler) - REQUIRED
         DG_DEEPGEN_QWEN_PATH: Path to Qwen2.5-VL model - REQUIRED
+        DG_DEEPGEN_CONFIG: Config name from configs/ folder (default: deepgen_v1)
         DG_DEEPGEN_GPUS_PER_MODEL: Number of GPUs per model instance (default: 0, use all visible)
         DG_DEEPGEN_CFG_PROMPT: CFG prompt for unconditional generation (default: "")
-        DG_DEEPGEN_NUM_QUERIES: Number of query tokens for connector (default: 128)
-        DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
-        DG_DEEPGEN_VIT_INPUT_SIZE: Vision encoder input size (default: 448)
-        DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE: Connector hidden size (default: 2048)
-        DG_DEEPGEN_CONNECTOR_LAYERS: Number of connector layers (default: 6)
-        DG_DEEPGEN_CONNECTOR_HEADS: Number of connector attention heads (default: 32)
-        DG_DEEPGEN_ATTN_IMPL: Attention implementation (default: flash_attention_2)
+        DG_DEEPGEN_DEBUG: Debug level for checkpoint loading (default: 0)
+
+    Config-based architecture:
+        Model-specific parameters (connector config, num_queries, etc.) are defined in
+        config files located at diffgentor/models/deepgen_v1/configs/.
 
     Multi-GPU Usage:
         The Launcher automatically handles GPU assignment based on DG_DEEPGEN_GPUS_PER_MODEL.
@@ -115,18 +114,10 @@ class DeepGenBackend(BaseEditingBackend):
         from diffgentor.models.deepgen_v1 import DeepGenModel
 
         print_rank0(f"Loading DeepGen model...")
+        print_rank0(f"  Config: {self._env.config}")
         print_rank0(f"  Diffusion path: {self._env.diffusion_path}")
         print_rank0(f"  Qwen path: {self._env.qwen_path}")
         print_rank0(f"  Checkpoint: {self.model_name}")
-
-        # Build connector config
-        connector_config = {
-            'hidden_size': self._env.connector_hidden_size,
-            'intermediate_size': self._env.connector_hidden_size * 6,  # ~6x hidden size
-            'num_hidden_layers': self._env.connector_layers,
-            '_attn_implementation': self._env.attn_impl,
-            'num_attention_heads': self._env.connector_heads,
-        }
 
         # Determine dtype
         torch_dtype = torch.bfloat16
@@ -137,14 +128,11 @@ class DeepGenBackend(BaseEditingBackend):
             elif dtype_str == "float32":
                 torch_dtype = torch.float32
 
-        # Initialize model
+        # Initialize model with config from configs/ folder
         self._model = DeepGenModel(
             diffusion_path=self._env.diffusion_path,
             qwen_path=self._env.qwen_path,
-            num_queries=self._env.num_queries,
-            connector_config=connector_config,
-            vit_input_size=self._env.vit_input_size,
-            max_length=self._env.max_length,
+            config_name=self._env.config,
             torch_dtype=torch_dtype,
         )
 

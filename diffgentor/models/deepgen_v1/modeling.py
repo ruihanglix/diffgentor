@@ -83,6 +83,35 @@ def load_checkpoint(checkpoint_path: str) -> Dict[str, torch.Tensor]:
         return torch.load(checkpoint_path, map_location="cpu")
 
 
+def load_config(config_name: str = "deepgen_v1") -> Dict[str, Any]:
+    """Load configuration by name from configs/ folder.
+
+    Args:
+        config_name: Name of the config file (without .py extension)
+
+    Returns:
+        Dict containing prompt_template, connector_config, and model_config
+
+    Raises:
+        ValueError: If config file not found
+    """
+    import importlib
+
+    try:
+        config_module = importlib.import_module(f".configs.{config_name}", package="diffgentor.models.deepgen_v1")
+    except ModuleNotFoundError:
+        raise ValueError(
+            f"Config '{config_name}' not found. "
+            f"Available configs are in diffgentor/models/deepgen_v1/configs/"
+        )
+
+    return {
+        "prompt_template": getattr(config_module, "prompt_template"),
+        "connector_config": getattr(config_module, "connector_config"),
+        "model_config": getattr(config_module, "model_config"),
+    }
+
+
 class DeepGenModel(nn.Module):
     """DeepGen model combining Qwen2.5-VL and SD3.5 for image generation/editing.
 
@@ -97,12 +126,7 @@ class DeepGenModel(nn.Module):
     Args:
         diffusion_path: Path to diffusion model (transformer, vae, scheduler)
         qwen_path: Path to Qwen2.5-VL model
-        num_queries: Number of query tokens for the connector (default: 128)
-        connector_config: Configuration for the connector module
-        vit_input_size: Input size for vision encoder (default: 448)
-        max_length: Maximum sequence length (default: 1024)
-        freeze_lmm: Whether to freeze the LMM (default: True)
-        freeze_transformer: Whether to freeze the transformer (default: True)
+        config_name: Name of config to load from configs/ folder (default: deepgen_v1)
         lora_modules: LoRA target modules (default: 'auto')
         lora_rank: LoRA rank (default: 64)
         lora_alpha: LoRA alpha (default: 128)
@@ -114,32 +138,11 @@ class DeepGenModel(nn.Module):
         torch_dtype: Data type for model weights
     """
 
-    # Prompt template for Qwen2.5-VL
-    PROMPT_TEMPLATE = {
-        'IMG_START_TOKEN': '<|vision_start|>',
-        'IMG_END_TOKEN': '<|vision_end|>',
-        'IMG_CONTEXT_TOKEN': '<|image_pad|>',
-        'IMG_START_TOKEN_FOR_GENERATION': False,
-        'SYSTEM': '<|im_start|>system\n{system}<|im_end|>\n',
-        'INSTRUCTION': '<|im_start|>user\n{input}<|im_end|>\n<|im_start|>assistant\n',
-        'SUFFIX': '<|im_end|>',
-        'SUFFIX_AS_EOS': True,
-        'SEP': '\n',
-        'STOP_WORDS': ['<|im_end|>', '<|endoftext|>'],
-        'GENERATION': 'Generate an image: {input}',
-        'CFG': 'Generate an image.'
-    }
-
     def __init__(
         self,
         diffusion_path: str,
         qwen_path: str,
-        num_queries: int = 128,
-        connector_config: Optional[Dict[str, Any]] = None,
-        vit_input_size: int = 448,
-        max_length: int = 1024,
-        freeze_lmm: bool = True,
-        freeze_transformer: bool = True,
+        config_name: str = "deepgen_v1",
         lora_modules: Optional[Union[str, List[str]]] = 'auto',
         lora_rank: int = 64,
         lora_alpha: int = 128,
@@ -155,15 +158,18 @@ class DeepGenModel(nn.Module):
         self._device = device or "cuda"
         self._dtype = torch_dtype
 
-        # Default connector config
-        if connector_config is None:
-            connector_config = {
-                'hidden_size': 2048,
-                'intermediate_size': 11946,
-                'num_hidden_layers': 6,
-                '_attn_implementation': 'flash_attention_2',
-                'num_attention_heads': 32,
-            }
+        # Load config from configs/ folder
+        config = load_config(config_name)
+        self.prompt_template = config["prompt_template"]
+        connector_config = config["connector_config"]
+        model_config = config["model_config"]
+
+        # Extract model config values
+        num_queries = model_config["num_queries"]
+        vit_input_size = model_config["vit_input_size"]
+        max_length = model_config["max_length"]
+        freeze_lmm = model_config["freeze_lmm"]
+        freeze_transformer = model_config["freeze_transformer"]
 
         # Load Qwen2.5-VL
         print(f"Loading Qwen2.5-VL from: {qwen_path}")
@@ -215,7 +221,6 @@ class DeepGenModel(nn.Module):
         )
 
         # Store config
-        self.prompt_template = self.PROMPT_TEMPLATE
         self.vit_input_size = vit_input_size
         self.max_length = max_length
         self.image_token_id = self.tokenizer.convert_tokens_to_ids(self.prompt_template['IMG_CONTEXT_TOKEN'])

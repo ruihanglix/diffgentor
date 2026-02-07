@@ -34,16 +34,19 @@ diffgentor edit --backend deepgen \
 |----------|-------------|---------|
 | `DG_DEEPGEN_DIFFUSION_PATH` | Path to diffusion model (**required**) | - |
 | `DG_DEEPGEN_QWEN_PATH` | Path to Qwen2.5-VL model (**required**) | - |
+| `DG_DEEPGEN_CONFIG` | Config name from `configs/` folder | `deepgen_v1` |
 | `DG_DEEPGEN_GPUS_PER_MODEL` | GPUs per model instance | `0` (all visible) |
 | `DG_DEEPGEN_CFG_PROMPT` | CFG prompt for unconditional | `""` |
-| `DG_DEEPGEN_NUM_QUERIES` | Number of connector queries | `128` |
-| `DG_DEEPGEN_MAX_LENGTH` | Maximum sequence length | `1024` |
-| `DG_DEEPGEN_VIT_INPUT_SIZE` | Vision encoder input size | `448` |
-| `DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE` | Connector hidden dimension | `2048` |
-| `DG_DEEPGEN_CONNECTOR_LAYERS` | Number of connector layers | `6` |
-| `DG_DEEPGEN_CONNECTOR_HEADS` | Connector attention heads | `32` |
-| `DG_DEEPGEN_ATTN_IMPL` | Attention implementation | `flash_attention_2` |
 | `DG_DEEPGEN_DEBUG` | Debug level for checkpoint loading (0-3) | `0` |
+
+### Config-Based Architecture
+
+Model-specific parameters (connector config, num_queries, etc.) are defined in config files located at `diffgentor/models/deepgen_v1/configs/`. The config file is selected via `DG_DEEPGEN_CONFIG`.
+
+Each config file contains:
+- `prompt_template`: Token definitions for image/text formatting
+- `connector_config`: Connector architecture parameters (hidden_size, intermediate_size, layers, heads, etc.)
+- `model_config`: Model parameters (num_queries, vit_input_size, max_length, etc.)
 
 ## Model Files
 
@@ -86,6 +89,7 @@ The checkpoint file (`.pt` or `.safetensors`) contains:
 ```bash
 DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
+DG_DEEPGEN_CONFIG=deepgen_v1 \
 diffgentor edit --backend deepgen \
     --model_name /checkpoints/deepgen.pt \
     --input data.csv \
@@ -98,6 +102,7 @@ diffgentor edit --backend deepgen \
 ```bash
 DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
+DG_DEEPGEN_CONFIG=deepgen_v1 \
 diffgentor t2i --backend deepgen \
     --model_name /checkpoints/deepgen.pt \
     --prompt "A cat sitting on a windowsill" \
@@ -113,19 +118,21 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 DG_DEEPGEN_GPUS_PER_MODEL=2 \
 DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
+DG_DEEPGEN_CONFIG=deepgen_v1 \
 diffgentor edit --backend deepgen \
     --model_name /checkpoints/deepgen.pt \
     --input data.csv
 ```
 
-### Custom Connector Configuration
+### Custom Config
+
+To use a different model configuration, create a new config file in `diffgentor/models/deepgen_v1/configs/` and specify it via `DG_DEEPGEN_CONFIG`:
 
 ```bash
+# Use custom config file: diffgentor/models/deepgen_v1/configs/my_custom_config.py
 DG_DEEPGEN_DIFFUSION_PATH=/models/UniPic2-SD3.5M-Kontext-2B \
 DG_DEEPGEN_QWEN_PATH=/models/Qwen2.5-VL-3B-Instruct \
-DG_DEEPGEN_NUM_QUERIES=256 \
-DG_DEEPGEN_CONNECTOR_LAYERS=8 \
-DG_DEEPGEN_CONNECTOR_HEADS=64 \
+DG_DEEPGEN_CONFIG=my_custom_config \
 diffgentor edit --backend deepgen \
     --model_name /checkpoints/deepgen.pt \
     --input data.csv
@@ -175,9 +182,10 @@ Text/Image Input
 ## Notes
 
 - **VRAM Requirements**: ~24GB+ for 7B Qwen model with SD3.5
-- **Flash Attention**: Recommended for better performance (`DG_DEEPGEN_ATTN_IMPL=flash_attention_2`)
+- **Flash Attention**: Recommended for better performance (set in config file's `connector_config._attn_implementation`)
 - **Checkpoint Format**: Supports both `.safetensors` and `.pt` formats
 - **Dynamic Resolution**: Input images are automatically resized while maintaining aspect ratio
+- **Config Files**: Model architecture is defined in config files, not environment variables
 
 ## Debug Mode
 
