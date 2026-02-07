@@ -26,7 +26,7 @@ from einops import rearrange
 from torch.nn.utils.rnn import pad_sequence
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler
-from diffusers.models.transformers import SD3Transformer2DModel
+from diffgentor.models.deepgen.transformer_sd3_dynamic import SD3Transformer2DModel
 from diffgentor.models.deepgen.pipeline_stable_diffusion_3_dynamic import StableDiffusion3Pipeline
 from diffusers.utils.torch_utils import randn_tensor
 from peft import LoraConfig
