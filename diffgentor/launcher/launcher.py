@@ -93,6 +93,16 @@ class Launcher:
             # Default: single process with device_map="auto"
             return LaunchStrategy.DIRECT
 
+        # DeepGen uses device_map="auto" for multi-GPU, not torchrun
+        if self.backend == "deepgen":
+            from diffgentor.utils.env import DeepGenEnv
+            gpus_per_model = DeepGenEnv.gpus_per_model()
+            # If gpus_per_model is set and we have enough GPUs for multiple instances
+            if gpus_per_model > 0 and self.num_gpus // gpus_per_model > 1:
+                return LaunchStrategy.MULTIPROCESS
+            # Default: single process with device_map="auto"
+            return LaunchStrategy.DIRECT
+
         # Check for special models requiring tensor parallelism
         model_type = getattr(self.args, "model_type", None)
         if model_type == "emu35":
@@ -106,6 +116,14 @@ class Launcher:
             from diffgentor.utils.env import HunyuanImage3Env
 
             gpus_per_model = HunyuanImage3Env.gpus_per_model()
+            if gpus_per_model > 0 and self.num_gpus // gpus_per_model > 1:
+                return LaunchStrategy.MULTIPROCESS
+            return LaunchStrategy.DIRECT
+
+        if model_type == "deepgen":
+            from diffgentor.utils.env import DeepGenEnv
+
+            gpus_per_model = DeepGenEnv.gpus_per_model()
             if gpus_per_model > 0 and self.num_gpus // gpus_per_model > 1:
                 return LaunchStrategy.MULTIPROCESS
             return LaunchStrategy.DIRECT
@@ -182,6 +200,9 @@ class Launcher:
         if self.backend == "hunyuan_image_3" or model_type == "hunyuan_image_3":
             from diffgentor.utils.env import HunyuanImage3Env
             gpus_per_model = HunyuanImage3Env.gpus_per_model()
+        elif self.backend == "deepgen" or model_type == "deepgen":
+            from diffgentor.utils.env import DeepGenEnv
+            gpus_per_model = DeepGenEnv.gpus_per_model()
         elif model_type == "emu35":
             from diffgentor.utils.env import Emu35Env
             gpus_per_model = Emu35Env.gpus_per_model()
