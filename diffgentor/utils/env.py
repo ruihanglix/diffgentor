@@ -477,9 +477,21 @@ class DeepGenEnv(ModelEnvConfig):
         DG_DEEPGEN_DIFFUSION_MODEL_PATH: Override diffusion model path (SD3.5)
         DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
         DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
+        DG_DEEPGEN_GPUS_PER_MODEL: Number of GPUs per model instance (default: 1)
+
+    Multi-GPU Usage:
+        The Launcher automatically handles GPU assignment based on DG_DEEPGEN_GPUS_PER_MODEL.
+        Each model instance runs on its assigned GPU(s).
+
+        Examples:
+            # 8 model instances, each on 1 GPU (8 GPUs total)
+            CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 DG_DEEPGEN_GPUS_PER_MODEL=1 \\
+                diffgentor edit --backend deepgen --num_gpus 8 ...
+            # Instance 0: GPU 0 | Instance 1: GPU 1 | ... | Instance 7: GPU 7
     """
 
     _prefix: str = field(default="DEEPGEN", repr=False)
+    _gpus_per_model: int = field(default=1, repr=False)
     config_name: str = "deepgen"
     diffusion_model_path: Optional[str] = None
     ar_model_path: Optional[str] = None
@@ -501,6 +513,7 @@ class DeepGenEnv(ModelEnvConfig):
         config_name = get_env_str("DEEPGEN_CONFIG", "deepgen")
 
         env = cls(
+            _gpus_per_model=get_env_int("DEEPGEN_GPUS_PER_MODEL", 1),
             config_name=config_name,
             diffusion_model_path=get_env_str("DEEPGEN_DIFFUSION_MODEL_PATH"),
             ar_model_path=get_env_str("DEEPGEN_AR_MODEL_PATH"),
@@ -513,6 +526,17 @@ class DeepGenEnv(ModelEnvConfig):
         env._config = load_deepgen_config(config_name)
 
         return env
+
+    @staticmethod
+    def gpus_per_model() -> int:
+        """Get number of GPUs per model instance from environment.
+
+        Used by Launcher to determine launch strategy.
+
+        Returns:
+            Number of GPUs per model (default: 1)
+        """
+        return get_env_int("DEEPGEN_GPUS_PER_MODEL", 1)
 
     @property
     def model_config(self) -> Dict[str, Any]:

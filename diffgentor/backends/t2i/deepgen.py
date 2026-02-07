@@ -72,11 +72,25 @@ class DeepGenT2IBackend(BaseBackend):
         DG_DEEPGEN_CONFIG (default: "deepgen"). Model paths can be overridden
         via environment variables.
 
+        GPU assignment is handled by the Launcher based on DG_DEEPGEN_GPUS_PER_MODEL.
+        Each instance runs on its assigned GPU(s) via CUDA_VISIBLE_DEVICES.
+
         Args:
             **kwargs: Additional arguments
         """
+        import os
+
         from diffgentor.models.deepgen import DeepGenModel
         from diffgentor.models.deepgen.model import DeepGenModelConfig
+
+        # Log GPU configuration
+        visible_gpus = os.environ.get("CUDA_VISIBLE_DEVICES", "all")
+        num_gpus = torch.cuda.device_count()
+        print_rank0(f"[DeepGen] CUDA_VISIBLE_DEVICES: {visible_gpus}")
+        print_rank0(f"[DeepGen] Available CUDA devices: {num_gpus}")
+        for i in range(num_gpus):
+            props = torch.cuda.get_device_properties(i)
+            print_rank0(f"  GPU {i}: {props.name}, {props.total_memory / 1024**3:.1f} GB")
 
         # Create model config from environment
         config = DeepGenModelConfig.from_env(self._env)
@@ -85,6 +99,7 @@ class DeepGenT2IBackend(BaseBackend):
         print_rank0(f"  Config: {self._env.config_name}")
         print_rank0(f"  Diffusion model: {config.diffusion_model_path}")
         print_rank0(f"  AR model: {config.ar_model_path}")
+        print_rank0(f"  Device: {self.device}")
         if self.model_name:
             print_rank0(f"  Checkpoint: {self.model_name}")
 

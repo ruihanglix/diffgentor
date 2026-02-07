@@ -35,6 +35,7 @@ DeepGen uses a config file system to manage model parameters. Config files are l
 | `DG_DEEPGEN_DIFFUSION_MODEL_PATH` | Path to SD3.5 diffusion model | Required |
 | `DG_DEEPGEN_AR_MODEL_PATH` | Path to Qwen2.5-VL AR model | Required |
 | `DG_DEEPGEN_MAX_LENGTH` | Max sequence length | `1024` |
+| `DG_DEEPGEN_GPUS_PER_MODEL` | Number of GPUs per model instance | `1` |
 
 ### CLI Parameters
 
@@ -154,6 +155,19 @@ diffgentor t2i --backend deepgen \
     --output_dir ./output
 ```
 
+### Multi-GPU (8 instances on 8 GPUs)
+
+```bash
+DG_DEEPGEN_GPUS_PER_MODEL=1 \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
+diffgentor t2i --backend deepgen \
+    --num_gpus 8 \
+    --model_name /path/to/checkpoint.safetensors \
+    --prompts_file prompts.jsonl \
+    --output_dir ./output
+```
+
 ## Generation Parameters
 
 | Parameter | Description | Default |
@@ -168,7 +182,7 @@ diffgentor t2i --backend deepgen \
 ## Notes
 
 - **VRAM Requirements**: ~24GB+ for the full model (Qwen2.5-VL-3B + SD3.5-Medium)
-- **Multi-GPU**: Currently supports single GPU inference
+- **Multi-GPU**: Supports multiple model instances via `DG_DEEPGEN_GPUS_PER_MODEL`
 - **Output Format**: PNG images
 - **ViT Input Size**: Fixed at 448 (not configurable)
 

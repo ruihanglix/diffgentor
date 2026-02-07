@@ -93,6 +93,14 @@ class Launcher:
             # Default: single process with device_map="auto"
             return LaunchStrategy.DIRECT
 
+        # DeepGen: each instance runs on its own GPU(s)
+        if self.backend == "deepgen":
+            from diffgentor.utils.env import DeepGenEnv
+            gpus_per_model = DeepGenEnv.gpus_per_model()
+            if self.num_gpus > 1:
+                return LaunchStrategy.MULTIPROCESS
+            return LaunchStrategy.DIRECT
+
         # Check for special models requiring tensor parallelism
         model_type = getattr(self.args, "model_type", None)
         if model_type == "emu35":
@@ -182,6 +190,9 @@ class Launcher:
         if self.backend == "hunyuan_image_3" or model_type == "hunyuan_image_3":
             from diffgentor.utils.env import HunyuanImage3Env
             gpus_per_model = HunyuanImage3Env.gpus_per_model()
+        elif self.backend == "deepgen" or model_type == "deepgen":
+            from diffgentor.utils.env import DeepGenEnv
+            gpus_per_model = DeepGenEnv.gpus_per_model()
         elif model_type == "emu35":
             from diffgentor.utils.env import Emu35Env
             gpus_per_model = Emu35Env.gpus_per_model()

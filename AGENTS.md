@@ -159,6 +159,9 @@ Examples:
 - `DG_XDIT_RING_DEGREE=2`
 - `DG_HUNYUAN_IMAGE_3_MOE_IMPL=flashinfer`
 - `DG_HUNYUAN_IMAGE_3_GPUS_PER_MODEL=4`
+- `DG_DEEPGEN_GPUS_PER_MODEL=1`
+- `DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5`
+- `DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl`
 
 ### CLI Arguments vs Environment Variables
 
