@@ -29,12 +29,12 @@ DeepGen uses a config file system to manage model parameters. Config files are l
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DG_DEEPGEN_CONFIG` | Config file name (e.g., `deepgen`) | Yes |
-| `DG_DEEPGEN_DIFFUSION_MODEL_PATH` | Path to SD3.5 diffusion model | Yes |
-| `DG_DEEPGEN_AR_MODEL_PATH` | Path to Qwen2.5-VL AR model | Yes |
-| `DG_DEEPGEN_MAX_LENGTH` | Max sequence length | No (default: 1024) |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DG_DEEPGEN_CONFIG` | Config file name | `deepgen` |
+| `DG_DEEPGEN_DIFFUSION_MODEL_PATH` | Path to SD3.5 diffusion model | Required |
+| `DG_DEEPGEN_AR_MODEL_PATH` | Path to Qwen2.5-VL AR model | Required |
+| `DG_DEEPGEN_MAX_LENGTH` | Max sequence length | `1024` |
 
 ### CLI Parameters
 
@@ -62,7 +62,6 @@ The config file (e.g., `diffgentor/models/deepgen/config/deepgen.py`) contains m
 ## Basic Usage
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 diffgentor t2i --backend deepgen \
@@ -98,7 +97,6 @@ The checkpoint contains the trained connector and LoRA weights. It should be a `
 ### Basic Text-to-Image
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 diffgentor t2i --backend deepgen \
@@ -110,7 +108,6 @@ diffgentor t2i --backend deepgen \
 ### Batch Generation from File
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 diffgentor t2i --backend deepgen \
@@ -122,7 +119,6 @@ diffgentor t2i --backend deepgen \
 ### Custom CFG Scale and Steps
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 diffgentor t2i --backend deepgen \
@@ -136,7 +132,6 @@ diffgentor t2i --backend deepgen \
 ### Higher Resolution Output
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 diffgentor t2i --backend deepgen \
@@ -145,6 +140,18 @@ diffgentor t2i --backend deepgen \
     --output_dir ./output \
     --height 1024 \
     --width 1024
+```
+
+### Using Custom Config
+
+```bash
+DG_DEEPGEN_CONFIG=my_custom_config \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
+diffgentor t2i --backend deepgen \
+    --model_name /path/to/checkpoint.safetensors \
+    --prompt "A beautiful sunset" \
+    --output_dir ./output
 ```
 
 ## Generation Parameters
@@ -181,5 +188,5 @@ Ensure all model paths are correct and the checkpoint is compatible with the bas
 ### Config Not Found
 
 If you get a config not found error, ensure:
-1. `DG_DEEPGEN_CONFIG` is set to a valid config name
+1. `DG_DEEPGEN_CONFIG` is set to a valid config name (default: `deepgen`)
 2. The config file exists in `diffgentor/models/deepgen/config/`

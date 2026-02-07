@@ -473,14 +473,14 @@ class DeepGenEnv(ModelEnvConfig):
         --negative_prompt: Negative prompt for CFG
 
     Environment variables:
-        DG_DEEPGEN_CONFIG: Config file name (required, e.g., "deepgen")
+        DG_DEEPGEN_CONFIG: Config file name (default: "deepgen")
         DG_DEEPGEN_DIFFUSION_MODEL_PATH: Override diffusion model path (SD3.5)
         DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
         DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
     """
 
     _prefix: str = field(default="DEEPGEN", repr=False)
-    config_name: Optional[str] = None
+    config_name: str = "deepgen"
     diffusion_model_path: Optional[str] = None
     ar_model_path: Optional[str] = None
     max_length: int = 1024
@@ -492,16 +492,13 @@ class DeepGenEnv(ModelEnvConfig):
     def load(cls) -> "DeepGenEnv":
         """Load DeepGen environment configuration.
 
-        Loads config file specified by DG_DEEPGEN_CONFIG and applies
+        Loads config file specified by DG_DEEPGEN_CONFIG (default: "deepgen") and applies
         environment variable overrides for model paths.
 
         Returns:
             DeepGenEnv instance with loaded configuration
-
-        Raises:
-            ValueError: If DG_DEEPGEN_CONFIG is not set
         """
-        config_name = get_env_str("DEEPGEN_CONFIG")
+        config_name = get_env_str("DEEPGEN_CONFIG", "deepgen")
 
         env = cls(
             config_name=config_name,
@@ -510,11 +507,10 @@ class DeepGenEnv(ModelEnvConfig):
             max_length=get_env_int("DEEPGEN_MAX_LENGTH", 1024),
         )
 
-        # Load config file if specified
-        if config_name:
-            from diffgentor.models.deepgen.config import load_deepgen_config
+        # Load config file
+        from diffgentor.models.deepgen.config import load_deepgen_config
 
-            env._config = load_deepgen_config(config_name)
+        env._config = load_deepgen_config(config_name)
 
         return env
 

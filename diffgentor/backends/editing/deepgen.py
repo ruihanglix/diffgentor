@@ -39,7 +39,7 @@ class DeepGenEditingBackend(BaseEditingBackend):
         --negative_prompt: Negative prompt for CFG
 
     Environment variables:
-        DG_DEEPGEN_CONFIG: Config file name (required, e.g., "deepgen")
+        DG_DEEPGEN_CONFIG: Config file name (default: "deepgen")
         DG_DEEPGEN_DIFFUSION_MODEL_PATH: Override diffusion model path (SD3.5)
         DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
         DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
@@ -64,20 +64,14 @@ class DeepGenEditingBackend(BaseEditingBackend):
         """Load DeepGen model.
 
         The model configuration is loaded from the config file specified by
-        DG_DEEPGEN_CONFIG. Model paths can be overridden via environment variables.
+        DG_DEEPGEN_CONFIG (default: "deepgen"). Model paths can be overridden
+        via environment variables.
 
         Args:
             **kwargs: Additional arguments
         """
         from diffgentor.models.deepgen import DeepGenModel
         from diffgentor.models.deepgen.model import DeepGenModelConfig
-
-        # Validate config is loaded
-        if not self._env.config_name:
-            raise ValueError(
-                "DeepGen config not specified. "
-                "Set DG_DEEPGEN_CONFIG environment variable (e.g., DG_DEEPGEN_CONFIG=deepgen)"
-            )
 
         # Create model config from environment
         config = DeepGenModelConfig.from_env(self._env)

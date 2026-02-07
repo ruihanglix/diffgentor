@@ -76,7 +76,6 @@ Use the DeepGen unified model (Qwen2.5-VL + SD3.5) for text-to-image generation.
 
 ```bash
 # Set required environment variables
-export DG_DEEPGEN_CONFIG=deepgen
 export DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5
 export DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl
 
@@ -94,7 +93,7 @@ diffgentor t2i --backend deepgen \
 - `--width`: Output width (default: 512)
 
 **Environment Variables:**
-- `DG_DEEPGEN_CONFIG`: Config file name (required, e.g., `deepgen`)
+- `DG_DEEPGEN_CONFIG`: Config file name (default: `deepgen`)
 - `DG_DEEPGEN_DIFFUSION_MODEL_PATH`: Path to SD3.5 diffusion model (required)
 - `DG_DEEPGEN_AR_MODEL_PATH`: Path to Qwen2.5-VL AR model (required)
 - `DG_DEEPGEN_MAX_LENGTH`: Max sequence length (default: 1024)
