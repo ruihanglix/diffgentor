@@ -478,6 +478,7 @@ class DeepGenEnv(ModelEnvConfig):
         DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
         DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
         DG_DEEPGEN_GPUS_PER_MODEL: Number of GPUs per model instance (default: 1)
+        DG_DEEPGEN_DEBUG_CHECKPOINT: Enable checkpoint loading debug log (default: 0)
 
     Multi-GPU Usage:
         The Launcher automatically handles GPU assignment based on DG_DEEPGEN_GPUS_PER_MODEL.
@@ -496,6 +497,7 @@ class DeepGenEnv(ModelEnvConfig):
     diffusion_model_path: Optional[str] = None
     ar_model_path: Optional[str] = None
     max_length: int = 1024
+    debug_checkpoint: bool = False
 
     # Loaded from config file (internal)
     _config: Dict[str, Any] = field(default_factory=dict, repr=False)
@@ -518,6 +520,7 @@ class DeepGenEnv(ModelEnvConfig):
             diffusion_model_path=get_env_str("DEEPGEN_DIFFUSION_MODEL_PATH"),
             ar_model_path=get_env_str("DEEPGEN_AR_MODEL_PATH"),
             max_length=get_env_int("DEEPGEN_MAX_LENGTH", 1024),
+            debug_checkpoint=get_env_bool("DEEPGEN_DEBUG_CHECKPOINT", False),
         )
 
         # Load config file

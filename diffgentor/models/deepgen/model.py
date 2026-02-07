@@ -208,9 +208,11 @@ class DeepGenModel(nn.Module):
         config: DeepGenModelConfig,
         pretrained_pth: Optional[str] = None,
         use_activation_checkpointing: bool = False,
+        debug_checkpoint: bool = False,
     ):
         super().__init__()
         self.config = config
+        self._debug_checkpoint = debug_checkpoint
 
         # Use prompt template from config or default
         self.prompt_template = config.prompt_template or self.DEFAULT_PROMPT_TEMPLATE
@@ -314,7 +316,11 @@ class DeepGenModel(nn.Module):
             self._load_pretrained(pretrained_pth)
 
     def _load_pretrained(self, pretrained_pth: str):
-        """Load pretrained weights."""
+        """Load pretrained weights.
+
+        If debug_checkpoint is enabled (DG_DEEPGEN_DEBUG_CHECKPOINT=1),
+        writes detailed checkpoint loading info to {log_dir}/checkpoint_debug.log
+        """
         if pretrained_pth.endswith(".pt"):
             state_dict = torch.load(pretrained_pth, map_location="cpu")
         else:
@@ -322,12 +328,137 @@ class DeepGenModel(nn.Module):
 
             state_dict = load_file(pretrained_pth, device="cpu")
 
+        # Get model and checkpoint keys
+        model_keys = set(self.state_dict().keys())
+        ckpt_keys = set(state_dict.keys())
+
+        # Compute differences
+        matched_keys = model_keys & ckpt_keys
+        missing_keys = model_keys - ckpt_keys  # In model but not in checkpoint
+        unexpected_keys = ckpt_keys - model_keys  # In checkpoint but not in model
+
+        # Load state dict
         missing, unexpected = self.load_state_dict(state_dict, strict=False)
         print(f"Loaded pretrained weights from {pretrained_pth}")
-        if missing:
-            print(f"Missing keys: {len(missing)}")
+        print(f"Missing keys: {len(missing)}")
         if unexpected:
             print(f"Unexpected keys: {len(unexpected)}")
+
+        # Write debug log if enabled
+        if self._debug_checkpoint:
+            self._write_checkpoint_debug_log(
+                pretrained_pth=pretrained_pth,
+                ckpt_keys=ckpt_keys,
+                model_keys=model_keys,
+                matched_keys=matched_keys,
+                missing_keys=missing_keys,
+                unexpected_keys=unexpected_keys,
+            )
+
+    def _write_checkpoint_debug_log(
+        self,
+        pretrained_pth: str,
+        ckpt_keys: set,
+        model_keys: set,
+        matched_keys: set,
+        missing_keys: set,
+        unexpected_keys: set,
+    ):
+        """Write checkpoint debug log to file (rank 0 only).
+
+        Args:
+            pretrained_pth: Path to checkpoint file
+            ckpt_keys: Keys in checkpoint
+            model_keys: Keys in model
+            matched_keys: Keys in both
+            missing_keys: Keys in model but not in checkpoint
+            unexpected_keys: Keys in checkpoint but not in model
+        """
+        from datetime import datetime
+        from pathlib import Path
+
+        from diffgentor.utils.distributed import is_main_process
+        from diffgentor.utils.logging import get_log_dir
+
+        # Only rank 0 writes debug log
+        if not is_main_process():
+            return
+
+        log_dir = get_log_dir()
+        if not log_dir:
+            print("Warning: log_dir not set, skipping checkpoint debug log")
+            return
+
+        debug_log_path = Path(log_dir) / "checkpoint_debug.log"
+
+        def categorize_keys(keys):
+            """Categorize keys by component."""
+            categories = {
+                "lora": [],
+                "connector": [],
+                "projector": [],
+                "meta_queries": [],
+                "transformer": [],
+                "lmm": [],
+                "vae": [],
+                "other": [],
+            }
+            for k in sorted(keys):
+                if "lora" in k.lower():
+                    categories["lora"].append(k)
+                elif "connector" in k:
+                    categories["connector"].append(k)
+                elif "projector" in k:
+                    categories["projector"].append(k)
+                elif "meta_queries" in k:
+                    categories["meta_queries"].append(k)
+                elif k.startswith("transformer."):
+                    categories["transformer"].append(k)
+                elif k.startswith("lmm."):
+                    categories["lmm"].append(k)
+                elif k.startswith("vae."):
+                    categories["vae"].append(k)
+                else:
+                    categories["other"].append(k)
+            return categories
+
+        def write_category_section(f, title, keys_set):
+            """Write a categorized section to file."""
+            f.write(f"\n{'=' * 80}\n")
+            f.write(f"{title}\n")
+            f.write(f"{'=' * 80}\n")
+            categories = categorize_keys(keys_set)
+            for cat_name, cat_keys in categories.items():
+                f.write(f"\n[{cat_name}] ({len(cat_keys)} keys)\n")
+                for key in cat_keys:
+                    f.write(f"{key}\n")
+
+        with open(debug_log_path, "w") as f:
+            # Header
+            f.write("=" * 80 + "\n")
+            f.write("DeepGen Checkpoint Debug Log\n")
+            f.write("=" * 80 + "\n")
+            f.write(f"Checkpoint: {pretrained_pth}\n")
+            f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+            # Summary
+            f.write(f"\n{'=' * 80}\n")
+            f.write("Summary\n")
+            f.write(f"{'=' * 80}\n")
+            f.write(f"Total checkpoint keys: {len(ckpt_keys)}\n")
+            f.write(f"Total model keys: {len(model_keys)}\n")
+            f.write(f"Matched keys: {len(matched_keys)}\n")
+            f.write(f"Missing keys (in model but not in checkpoint): {len(missing_keys)}\n")
+            f.write(f"Unexpected keys (in checkpoint but not in model): {len(unexpected_keys)}\n")
+
+            # Detailed sections
+            write_category_section(f, "Checkpoint Keys by Category", ckpt_keys)
+            write_category_section(f, "Model Keys by Category", model_keys)
+            write_category_section(f, "Missing Keys by Category (in model but not in checkpoint)", missing_keys)
+            write_category_section(f, "Unexpected Keys by Category (in checkpoint but not in model)", unexpected_keys)
+            write_category_section(f, "Matched Keys (successfully loaded)", matched_keys)
+
+        print(f"Checkpoint debug log saved to: {debug_log_path}")
 
     def llm2dit(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Transform LLM hidden states to DiT embeddings.

@@ -102,12 +102,15 @@ class DeepGenT2IBackend(BaseBackend):
         print_rank0(f"  Device: {self.device}")
         if self.model_name:
             print_rank0(f"  Checkpoint: {self.model_name}")
+        if self._env.debug_checkpoint:
+            print_rank0(f"  Debug checkpoint: enabled")
 
         # Load model (use model_name as checkpoint path)
         self._model = DeepGenModel(
             config=config,
             pretrained_pth=self.model_name,
             use_activation_checkpointing=self._env.use_activation_checkpointing,
+            debug_checkpoint=self._env.debug_checkpoint,
         )
 
         # Move to device
