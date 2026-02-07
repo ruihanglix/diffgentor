@@ -19,6 +19,7 @@ Diffgentor supports instruction-based image editing with multiple backends and m
 | `dreamomni2` | DreamOmni2 | ✓ | FLUX-Kontext + Qwen2.5-VL |
 | `flux_kontext_official` | Flux-Kontext | ✓ | BFL official implementation |
 | `hunyuan_image_3` | HunyuanImage-3.0 | ✓ | Tencent HunyuanImage-3.0 with CoT |
+| `deepgen` | DeepGen | ✓ | Qwen2.5-VL + SD3.5 unified model |
 
 ## Quick Start
 
@@ -106,6 +107,7 @@ Required columns:
 - [DreamOmni2](dreamomni2.md) - DreamOmni2
 - [Flux Kontext Official](flux_kontext.md) - BFL official
 - [HunyuanImage-3.0](hunyuan_image_3.md) - Tencent HunyuanImage-3.0
+- [DeepGen](deepgen.md) - Qwen2.5-VL + SD3.5 unified model
 - [OpenAI](openai.md) - GPT-Image API
 
 ## Additional Features
@@ -169,6 +171,13 @@ diffgentor edit --backend hunyuan_image_3 \
     --model_name ./HunyuanImage-3-Instruct-Distil \
     --input data.csv \
     --num_inference_steps 8
+
+# DeepGen
+DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+diffgentor edit --backend deepgen \
+    --model_name /path/to/deepgen_checkpoint \
+    --input data.csv
 ```
 
 ## Output

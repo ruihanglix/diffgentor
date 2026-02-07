@@ -55,7 +55,7 @@ def get_editing_backend(
 
     # Check if it's a third-party model
     third_party_models = {
-        "flux_kontext_official", "bagel", "step1x", "emu35", "dreamomni2", "hunyuan_image_3",
+        "flux_kontext_official", "bagel", "step1x", "emu35", "dreamomni2", "hunyuan_image_3", "deepgen",
     }
 
     if backend_name == "diffusers" or model_type in diffusers_models:
@@ -92,6 +92,9 @@ def get_editing_backend(
         elif effective_type == "hunyuan_image_3":
             from diffgentor.backends.editing.hunyuan_image_3 import HunyuanImage3Backend
             return HunyuanImage3Backend(backend_config, optimization_config)
+        elif effective_type == "deepgen":
+            from diffgentor.backends.editing.deepgen import DeepGenEditingBackend
+            return DeepGenEditingBackend(backend_config, optimization_config)
 
     # Check registry for custom backends
     if backend_name in EDITING_BACKEND_REGISTRY:
@@ -99,5 +102,5 @@ def get_editing_backend(
 
     raise ValueError(
         f"Unknown editing backend: {backend_name} (model_type={model_type}). "
-        f"Available: diffusers, openai, google_genai, flux_kontext_official, bagel, step1x, emu35, dreamomni2, hunyuan_image_3"
+        f"Available: diffusers, openai, google_genai, flux_kontext_official, bagel, step1x, emu35, dreamomni2, hunyuan_image_3, deepgen"
     )

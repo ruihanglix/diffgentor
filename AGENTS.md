@@ -75,6 +75,7 @@ temp/                    # Temporary files, experiments (git-ignored mostly)
 | `dreamomni2` | Editing | DreamOmni2 (FLUX.1-Kontext + Qwen2.5-VL) |
 | `flux_kontext_official` | Editing | BFL official Flux Kontext |
 | `hunyuan_image_3` | Editing | Tencent HunyuanImage-3.0-Instruct with CoT reasoning |
+| `deepgen` | T2I / Editing | DeepGen unified model (Qwen2.5-VL + SD3.5) |
 
 ## Commands You Can Use
 

@@ -70,6 +70,31 @@ diffgentor t2i --backend google_genai \
 
 See [Google GenAI Guide](google_genai.md) for details.
 
+### 5. DeepGen Backend
+
+Use the DeepGen unified model (Qwen2.5-VL + SD3.5) for text-to-image generation.
+
+```bash
+# Set required model paths
+export DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5
+export DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl
+
+diffgentor t2i --backend deepgen \
+    --model_name /path/to/deepgen_checkpoint \
+    --prompt "A futuristic cityscape"
+```
+
+**Environment Variables:**
+- `DG_DEEPGEN_SD3_MODEL_PATH`: Path to SD3.5 model (required)
+- `DG_DEEPGEN_QWEN_MODEL_PATH`: Path to Qwen2.5-VL model (required)
+- `DG_DEEPGEN_CHECKPOINT`: Path to model checkpoint (optional)
+- `DG_DEEPGEN_CFG_SCALE`: CFG guidance scale (default: 4.0)
+- `DG_DEEPGEN_HEIGHT`: Output height (default: 512)
+- `DG_DEEPGEN_WIDTH`: Output width (default: 512)
+- `DG_DEEPGEN_NUM_STEPS`: Inference steps (default: 50)
+
+See [DeepGen Guide](deepgen.md) for details.
+
 ## CLI Options
 
 ### Input/Output Options
