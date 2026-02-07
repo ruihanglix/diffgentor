@@ -75,12 +75,14 @@ See [Google GenAI Guide](google_genai.md) for details.
 Use the DeepGen unified model (Qwen2.5-VL + SD3.5) for text-to-image generation.
 
 ```bash
-# Set required model paths
-export DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5
-export DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl
+# Set required environment variables
+export DG_DEEPGEN_CONFIG=deepgen
+export DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5
+export DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl
+export DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors
 
 diffgentor t2i --backend deepgen \
-    --model_name /path/to/deepgen_checkpoint \
+    --model_name deepgen \
     --prompt "A futuristic cityscape" \
     --guidance_scale 4.0
 ```
@@ -92,9 +94,11 @@ diffgentor t2i --backend deepgen \
 - `--width`: Output width (default: 512)
 
 **Environment Variables:**
-- `DG_DEEPGEN_SD3_MODEL_PATH`: Path to SD3.5 model (required)
-- `DG_DEEPGEN_QWEN_MODEL_PATH`: Path to Qwen2.5-VL model (required)
+- `DG_DEEPGEN_CONFIG`: Config file name (required, e.g., `deepgen`)
+- `DG_DEEPGEN_DIFFUSION_MODEL_PATH`: Path to SD3.5 diffusion model (required)
+- `DG_DEEPGEN_AR_MODEL_PATH`: Path to Qwen2.5-VL AR model (required)
 - `DG_DEEPGEN_CHECKPOINT`: Path to model checkpoint (optional)
+- `DG_DEEPGEN_MAX_LENGTH`: Max sequence length (default: 1024)
 
 See [DeepGen Guide](deepgen.md) for details.
 

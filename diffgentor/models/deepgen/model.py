@@ -17,7 +17,7 @@ The model architecture consists of:
 import math
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -33,6 +33,9 @@ from peft import LoraConfig
 from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
 
 from diffgentor.models.deepgen.connector import ConnectorConfig, ConnectorEncoder
+
+if TYPE_CHECKING:
+    from diffgentor.utils.env import DeepGenEnv
 
 
 IMAGE_MEAN = (0.48145466, 0.4578275, 0.40821073)
@@ -87,36 +90,82 @@ class DeepGenModelConfig:
     """Configuration for DeepGen model.
 
     Args:
-        sd3_model_path: Path to SD3.5 model
-        qwen_model_path: Path to Qwen2.5-VL model
+        diffusion_model_path: Path to diffusion model (SD3.5)
+        ar_model_path: Path to AR model (Qwen2.5-VL)
         num_queries: Number of query tokens (default: 128)
         connector_hidden_size: Connector hidden size (default: 2048)
         connector_intermediate_size: Connector intermediate size (default: 11946)
         connector_num_layers: Number of connector layers (default: 6)
         connector_num_heads: Number of connector attention heads (default: 32)
-        vit_input_size: ViT input size (default: 448)
+        connector_attn_impl: Connector attention implementation (default: flash_attention_2)
         max_length: Maximum sequence length (default: 1024)
         freeze_lmm: Whether to freeze LMM (default: True)
         freeze_transformer: Whether to freeze transformer (default: True)
         lora_rank: LoRA rank (default: 64)
         lora_alpha: LoRA alpha (default: 128)
         unconditional_prob: Unconditional probability for CFG training (default: 0.1)
+        prompt_template: Prompt template dict (loaded from config file)
     """
 
-    sd3_model_path: str
-    qwen_model_path: str
+    diffusion_model_path: str
+    ar_model_path: str
     num_queries: int = 128
     connector_hidden_size: int = 2048
     connector_intermediate_size: int = 11946
     connector_num_layers: int = 6
     connector_num_heads: int = 32
-    vit_input_size: int = 448
+    connector_attn_impl: str = "flash_attention_2"
     max_length: int = 1024
     freeze_lmm: bool = True
     freeze_transformer: bool = True
     lora_rank: int = 64
     lora_alpha: int = 128
     unconditional_prob: float = 0.1
+    prompt_template: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_env(cls, env: "DeepGenEnv") -> "DeepGenModelConfig":
+        """Create config from DeepGenEnv.
+
+        Args:
+            env: DeepGenEnv instance with loaded configuration
+
+        Returns:
+            DeepGenModelConfig instance
+
+        Raises:
+            ValueError: If required model paths are not provided
+        """
+        diffusion_path = env.diffusion_model_path
+        ar_path = env.ar_model_path
+
+        if not diffusion_path:
+            raise ValueError(
+                "Diffusion model path not specified. "
+                "Set DG_DEEPGEN_DIFFUSION_MODEL_PATH environment variable."
+            )
+        if not ar_path:
+            raise ValueError(
+                "AR model path not specified. "
+                "Set DG_DEEPGEN_AR_MODEL_PATH environment variable."
+            )
+
+        return cls(
+            diffusion_model_path=diffusion_path,
+            ar_model_path=ar_path,
+            num_queries=env.num_queries,
+            connector_hidden_size=env.connector_hidden_size,
+            connector_intermediate_size=env.connector_intermediate_size,
+            connector_num_layers=env.connector_num_layers,
+            connector_num_heads=env.connector_num_heads,
+            connector_attn_impl=env.connector_attn_impl,
+            max_length=env.max_length,
+            freeze_lmm=env.freeze_lmm,
+            freeze_transformer=env.freeze_transformer,
+            lora_rank=env.lora_rank,
+            lora_alpha=env.lora_alpha,
+            prompt_template=env.prompt_template,
+        )
 
 
 class DeepGenModel(nn.Module):
@@ -135,8 +184,8 @@ class DeepGenModel(nn.Module):
         use_activation_checkpointing: Enable gradient checkpointing (default: False)
     """
 
-    # Prompt template for Qwen2.5-VL
-    PROMPT_TEMPLATE = {
+    # Default prompt template (used if not provided in config)
+    DEFAULT_PROMPT_TEMPLATE = {
         "IMG_START_TOKEN": "<|vision_start|>",
         "IMG_END_TOKEN": "<|vision_end|>",
         "IMG_CONTEXT_TOKEN": "<|image_pad|>",
@@ -151,6 +200,9 @@ class DeepGenModel(nn.Module):
         "CFG": "Generate an image.",
     }
 
+    # Hardcoded ViT input size
+    VIT_INPUT_SIZE = 448
+
     def __init__(
         self,
         config: DeepGenModelConfig,
@@ -159,11 +211,13 @@ class DeepGenModel(nn.Module):
     ):
         super().__init__()
         self.config = config
-        self.prompt_template = self.PROMPT_TEMPLATE
 
-        # Load Qwen2.5-VL
+        # Use prompt template from config or default
+        self.prompt_template = config.prompt_template or self.DEFAULT_PROMPT_TEMPLATE
+
+        # Load Qwen2.5-VL (AR model)
         self.lmm = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            config.qwen_model_path,
+            config.ar_model_path,
             torch_dtype=torch.bfloat16,
             attn_implementation="flash_attention_2",
         )
@@ -171,9 +225,9 @@ class DeepGenModel(nn.Module):
             self.lmm.requires_grad_(False)
         self.freeze_lmm = config.freeze_lmm
 
-        # Load SD3.5 Transformer
+        # Load SD3.5 Transformer (Diffusion model)
         self.transformer = SD3Transformer2DModel.from_pretrained(
-            config.sd3_model_path,
+            config.diffusion_model_path,
             subfolder="transformer",
             torch_dtype=torch.bfloat16,
         )
@@ -183,7 +237,7 @@ class DeepGenModel(nn.Module):
 
         # Load VAE
         self.vae = AutoencoderKL.from_pretrained(
-            config.sd3_model_path,
+            config.diffusion_model_path,
             subfolder="vae",
             torch_dtype=torch.bfloat16,
         )
@@ -191,19 +245,19 @@ class DeepGenModel(nn.Module):
 
         # Load scheduler
         self.scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-            config.sd3_model_path,
+            config.diffusion_model_path,
             subfolder="scheduler",
         )
 
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
-            config.qwen_model_path,
+            config.ar_model_path,
             trust_remote_code=True,
             padding_side="right",
         )
 
-        # Setup image token
-        self.vit_input_size = config.vit_input_size
+        # Setup image token (hardcoded vit_input_size)
+        self.vit_input_size = self.VIT_INPUT_SIZE
         self.max_length = config.max_length
         self.image_token_id = self.tokenizer.convert_tokens_to_ids(self.prompt_template["IMG_CONTEXT_TOKEN"])
         self.register_buffer("vit_mean", torch.tensor(IMAGE_MEAN), persistent=False)
@@ -216,7 +270,7 @@ class DeepGenModel(nn.Module):
             intermediate_size=config.connector_intermediate_size,
             num_hidden_layers=config.connector_num_layers,
             num_attention_heads=config.connector_num_heads,
-            _attn_implementation="flash_attention_2",
+            _attn_implementation=config.connector_attn_impl,
         )
         self.connector = ConnectorEncoder(connector_config)
 

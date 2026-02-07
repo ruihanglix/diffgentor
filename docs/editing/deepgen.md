@@ -1,12 +1,12 @@
 # DeepGen Backend
 
-DeepGen is a unified visual generation model based on Qwen2.5-VL + SD3.5, supporting both text-to-image generation and image editing.
+DeepGen is a unified visual generation model based on AR (Qwen2.5-VL) + Diffusion (SD3.5), supporting both text-to-image generation and image editing.
 
 ## Architecture
 
 The model architecture consists of:
-- **Qwen2.5-VL**: Language/vision understanding module
-- **SD3.5 Transformer**: Image generation module
+- **AR Model (Qwen2.5-VL)**: Language/vision understanding module
+- **Diffusion Model (SD3.5)**: Image generation module
 - **Connector**: Bridges LLM hidden states to DiT input space
 
 ## Prerequisites
@@ -23,13 +23,39 @@ Required packages:
 - `transformers>=4.40.0`
 - `diffusers>=0.31.0`
 
+## Configuration
+
+DeepGen uses a Python config file system. Configuration is loaded from `diffgentor/models/deepgen/config/` directory.
+
+### Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DG_DEEPGEN_CONFIG` | Config file name (e.g., `deepgen`) | **Yes** |
+| `DG_DEEPGEN_DIFFUSION_MODEL_PATH` | Diffusion model path (SD3.5) | **Yes** |
+| `DG_DEEPGEN_AR_MODEL_PATH` | AR model path (Qwen2.5-VL) | **Yes** |
+| `DG_DEEPGEN_CHECKPOINT` | Model checkpoint path | No |
+| `DG_DEEPGEN_MAX_LENGTH` | Maximum sequence length | No (default: 1024) |
+
+### CLI Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--guidance_scale` | CFG guidance scale | 4.0 |
+| `--num_inference_steps` | Number of denoising steps | 50 |
+| `--height` | Output image height | 512 |
+| `--width` | Output image width | 512 |
+| `--negative_prompt` | Negative prompt for CFG | "" |
+| `--seed` | Random seed | Random |
+
 ## Basic Usage
 
 ### Image Editing
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
     --model_name deepgen \
@@ -40,8 +66,9 @@ diffgentor edit --backend deepgen \
 ### Text-to-Image Generation
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
     --model_name deepgen \
@@ -49,45 +76,18 @@ diffgentor t2i --backend deepgen \
     --output_dir ./output
 ```
 
-## CLI Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--guidance_scale` | CFG guidance scale | `4.0` |
-| `--num_inference_steps` | Number of denoising steps | `50` |
-| `--height` | Output image height | `512` |
-| `--width` | Output image width | `512` |
-| `--seed` | Random seed | Random |
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DG_DEEPGEN_SD3_MODEL_PATH` | Path to SD3.5 model | Required |
-| `DG_DEEPGEN_QWEN_MODEL_PATH` | Path to Qwen2.5-VL model | Required |
-| `DG_DEEPGEN_CHECKPOINT` | Path to model checkpoint | None |
-| `DG_DEEPGEN_CFG_PROMPT` | CFG negative prompt | `""` |
-| `DG_DEEPGEN_HEIGHT` | Default output image height | `512` |
-| `DG_DEEPGEN_WIDTH` | Default output image width | `512` |
-| `DG_DEEPGEN_NUM_STEPS` | Default number of inference steps | `50` |
-| `DG_DEEPGEN_NUM_QUERIES` | Number of query tokens | `128` |
-| `DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE` | Connector hidden size | `2048` |
-| `DG_DEEPGEN_CONNECTOR_NUM_LAYERS` | Number of connector layers | `6` |
-| `DG_DEEPGEN_VIT_INPUT_SIZE` | ViT input size | `448` |
-| `DG_DEEPGEN_LORA_RANK` | LoRA rank | `64` |
-
 ## Model Files
 
 The model requires two base models and an optional checkpoint:
 
-### SD3.5 Model
+### Diffusion Model (SD3.5)
 
 Download from HuggingFace:
 ```bash
 huggingface-cli download stabilityai/stable-diffusion-3.5-medium --local-dir ./sd3.5-medium
 ```
 
-### Qwen2.5-VL Model
+### AR Model (Qwen2.5-VL)
 
 Download from HuggingFace:
 ```bash
@@ -103,8 +103,9 @@ The checkpoint contains the trained connector and LoRA weights. It should be a `
 ### Basic Image Editing
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
     --model_name deepgen \
@@ -115,8 +116,9 @@ diffgentor edit --backend deepgen \
 ### Custom CFG Scale
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
     --model_name deepgen \
@@ -129,8 +131,9 @@ diffgentor edit --backend deepgen \
 ### Higher Resolution Output
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
     --model_name deepgen \
@@ -140,26 +143,52 @@ diffgentor edit --backend deepgen \
     --width 1024
 ```
 
-### Alternative Model Path Specification
+## Custom Configuration
 
-You can also specify model paths via `--model_name`:
+To create a custom configuration, add a new Python file in `diffgentor/models/deepgen/config/`:
 
-```bash
-diffgentor edit --backend deepgen \
-    --model_name "/path/to/sd3.5,/path/to/qwen2.5-vl" \
-    --input data.csv \
-    --output_dir ./output
+```python
+# diffgentor/models/deepgen/config/deepgen_large.py
+import torch
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler
+from diffusers.models.transformers import SD3Transformer2DModel
+from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
+
+tokenizer = dict(
+    type=AutoTokenizer.from_pretrained,
+    trust_remote_code=True,
+    padding_side="right",
+)
+
+prompt_template = dict(
+    IMG_START_TOKEN="<|vision_start|>",
+    IMG_END_TOKEN="<|vision_end|>",
+    IMG_CONTEXT_TOKEN="<|image_pad|>",
+    # ... other template fields
+)
+
+model = dict(
+    num_queries=256,  # More queries
+    connector=dict(
+        hidden_size=4096,  # Larger connector
+        intermediate_size=16384,
+        num_hidden_layers=8,
+        num_attention_heads=64,
+        _attn_implementation="flash_attention_2",
+    ),
+    # ... other model config
+    lora_rank=128,
+    lora_alpha=256,
+)
 ```
 
-## Generation Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--num_inference_steps` | Number of denoising steps | 50 (or `DG_DEEPGEN_NUM_STEPS`) |
-| `--guidance_scale` | CFG guidance scale | 4.0 |
-| `--seed` | Random seed | Random |
-| `--height` | Output image height | 512 (or `DG_DEEPGEN_HEIGHT`) |
-| `--width` | Output image width | 512 (or `DG_DEEPGEN_WIDTH`) |
+Then use it with:
+```bash
+DG_DEEPGEN_CONFIG=deepgen_large \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
+diffgentor edit --backend deepgen ...
+```
 
 ## Notes
 
@@ -173,10 +202,14 @@ diffgentor edit --backend deepgen \
 ### Out of Memory
 
 If you encounter OOM errors, try:
-1. Reduce `DG_DEEPGEN_HEIGHT` and `DG_DEEPGEN_WIDTH`
+1. Reduce `--height` and `--width`
 2. Use a smaller Qwen model (e.g., Qwen2.5-VL-2B)
 3. Enable CPU offloading (if supported)
 
 ### Model Loading Errors
 
 Ensure all model paths are correct and the checkpoint is compatible with the base models.
+
+### Config Not Found
+
+Make sure `DG_DEEPGEN_CONFIG` is set to a valid config name (without `.py` extension) that exists in `diffgentor/models/deepgen/config/`.

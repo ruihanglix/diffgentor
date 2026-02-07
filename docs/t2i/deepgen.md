@@ -5,8 +5,8 @@ DeepGen is a unified visual generation model based on Qwen2.5-VL + SD3.5, suppor
 ## Architecture
 
 The model architecture consists of:
-- **Qwen2.5-VL**: Language understanding module
-- **SD3.5 Transformer**: Image generation module
+- **Qwen2.5-VL**: Language understanding module (AR model)
+- **SD3.5 Transformer**: Image generation module (Diffusion model)
 - **Connector**: Bridges LLM hidden states to DiT input space
 
 ## Prerequisites
@@ -23,11 +23,37 @@ Required packages:
 - `transformers>=4.40.0`
 - `diffusers>=0.31.0`
 
+## Configuration System
+
+DeepGen uses a config file system to manage model parameters. Config files are located in `diffgentor/models/deepgen/config/`.
+
+### Required Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DG_DEEPGEN_CONFIG` | Config file name (e.g., `deepgen`) | Yes |
+| `DG_DEEPGEN_DIFFUSION_MODEL_PATH` | Path to SD3.5 diffusion model | Yes |
+| `DG_DEEPGEN_AR_MODEL_PATH` | Path to Qwen2.5-VL AR model | Yes |
+| `DG_DEEPGEN_CHECKPOINT` | Path to model checkpoint (.safetensors) | No |
+| `DG_DEEPGEN_MAX_LENGTH` | Max sequence length | No (default: 1024) |
+
+### Config File
+
+The config file (e.g., `diffgentor/models/deepgen/config/deepgen.py`) contains model-specific parameters:
+
+- `num_queries`: Number of query tokens
+- `connector_hidden_size`: Connector hidden size
+- `connector_num_layers`: Number of connector layers
+- `lora_rank`: LoRA rank
+- `lora_alpha`: LoRA alpha
+- `prompt_template`: Prompt template for generation
+
 ## Basic Usage
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
     --model_name deepgen \
@@ -46,35 +72,18 @@ diffgentor t2i --backend deepgen \
 | `--negative_prompt` | Negative prompt for CFG | `""` |
 | `--seed` | Random seed | Random |
 
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DG_DEEPGEN_SD3_MODEL_PATH` | Path to SD3.5 model | Required |
-| `DG_DEEPGEN_QWEN_MODEL_PATH` | Path to Qwen2.5-VL model | Required |
-| `DG_DEEPGEN_CHECKPOINT` | Path to model checkpoint | None |
-| `DG_DEEPGEN_CFG_PROMPT` | CFG negative prompt | `""` |
-| `DG_DEEPGEN_HEIGHT` | Default output image height | `512` |
-| `DG_DEEPGEN_WIDTH` | Default output image width | `512` |
-| `DG_DEEPGEN_NUM_STEPS` | Default number of inference steps | `50` |
-| `DG_DEEPGEN_NUM_QUERIES` | Number of query tokens | `128` |
-| `DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE` | Connector hidden size | `2048` |
-| `DG_DEEPGEN_CONNECTOR_NUM_LAYERS` | Number of connector layers | `6` |
-| `DG_DEEPGEN_VIT_INPUT_SIZE` | ViT input size | `448` |
-| `DG_DEEPGEN_LORA_RANK` | LoRA rank | `64` |
-
 ## Model Files
 
 The model requires two base models and an optional checkpoint:
 
-### SD3.5 Model
+### SD3.5 Model (Diffusion Model)
 
 Download from HuggingFace:
 ```bash
 huggingface-cli download stabilityai/stable-diffusion-3.5-medium --local-dir ./sd3.5-medium
 ```
 
-### Qwen2.5-VL Model
+### Qwen2.5-VL Model (AR Model)
 
 Download from HuggingFace:
 ```bash
@@ -90,8 +99,9 @@ The checkpoint contains the trained connector and LoRA weights. It should be a `
 ### Basic Text-to-Image
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
     --model_name deepgen \
@@ -102,8 +112,9 @@ diffgentor t2i --backend deepgen \
 ### Batch Generation from File
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
     --model_name deepgen \
@@ -114,8 +125,9 @@ diffgentor t2i --backend deepgen \
 ### Custom CFG Scale and Steps
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
     --model_name deepgen \
@@ -128,8 +140,9 @@ diffgentor t2i --backend deepgen \
 ### Higher Resolution Output
 
 ```bash
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
 DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
     --model_name deepgen \
@@ -139,43 +152,39 @@ diffgentor t2i --backend deepgen \
     --width 1024
 ```
 
-### Alternative Model Path Specification
-
-You can also specify model paths via `--model_name`:
-
-```bash
-diffgentor t2i --backend deepgen \
-    --model_name "/path/to/sd3.5,/path/to/qwen2.5-vl" \
-    --prompt "A beautiful sunset" \
-    --output_dir ./output
-```
-
 ## Generation Parameters
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--num_inference_steps` | Number of denoising steps | 50 (or `DG_DEEPGEN_NUM_STEPS`) |
+| `--num_inference_steps` | Number of denoising steps | 50 |
 | `--guidance_scale` | CFG guidance scale | 4.0 |
 | `--negative_prompt` | Negative prompt for CFG | "" |
 | `--seed` | Random seed | Random |
-| `--height` | Output image height | 512 (or `DG_DEEPGEN_HEIGHT`) |
-| `--width` | Output image width | 512 (or `DG_DEEPGEN_WIDTH`) |
+| `--height` | Output image height | 512 |
+| `--width` | Output image width | 512 |
 
 ## Notes
 
 - **VRAM Requirements**: ~24GB+ for the full model (Qwen2.5-VL-3B + SD3.5-Medium)
 - **Multi-GPU**: Currently supports single GPU inference
 - **Output Format**: PNG images
+- **ViT Input Size**: Fixed at 448 (not configurable)
 
 ## Troubleshooting
 
 ### Out of Memory
 
 If you encounter OOM errors, try:
-1. Reduce `DG_DEEPGEN_HEIGHT` and `DG_DEEPGEN_WIDTH`
+1. Reduce `--height` and `--width` CLI parameters
 2. Use a smaller Qwen model (e.g., Qwen2.5-VL-2B)
 3. Enable CPU offloading (if supported)
 
 ### Model Loading Errors
 
 Ensure all model paths are correct and the checkpoint is compatible with the base models.
+
+### Config Not Found
+
+If you get a config not found error, ensure:
+1. `DG_DEEPGEN_CONFIG` is set to a valid config name
+2. The config file exists in `diffgentor/models/deepgen/config/`

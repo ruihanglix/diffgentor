@@ -4,13 +4,12 @@
 
 """DeepGen backend for text-to-image generation.
 
-DeepGen is a unified visual generation model based on Qwen2.5-VL + SD3.5,
+DeepGen is a unified visual generation model based on AR (Qwen2.5-VL) + Diffusion (SD3.5),
 supporting both text-to-image generation and image editing.
 """
 
 from typing import List, Optional, Union
 
-import numpy as np
 import torch
 from einops import rearrange
 from PIL import Image
@@ -24,24 +23,25 @@ from diffgentor.utils.logging import print_rank0
 class DeepGenT2IBackend(BaseBackend):
     """DeepGen backend for text-to-image generation.
 
-    Uses Qwen2.5-VL for language understanding and SD3.5 for image generation.
+    Uses AR model (Qwen2.5-VL) for language understanding and
+    Diffusion model (SD3.5) for image generation.
+
+    Configuration is loaded from a Python config file. Model paths can be
+    overridden via environment variables.
 
     CLI parameters:
         --guidance_scale: CFG guidance scale (default: 4.0)
         --num_inference_steps: Number of inference steps (default: 50)
         --height: Output image height (default: 512)
         --width: Output image width (default: 512)
+        --negative_prompt: Negative prompt for CFG
 
-    Model-specific parameters via environment variables:
-        DG_DEEPGEN_SD3_MODEL_PATH: Path to SD3.5 model (required if not using model_name)
-        DG_DEEPGEN_QWEN_MODEL_PATH: Path to Qwen2.5-VL model (required if not using model_name)
-        DG_DEEPGEN_CHECKPOINT: Path to model checkpoint (optional)
-        DG_DEEPGEN_CFG_PROMPT: CFG negative prompt (default: "")
-        DG_DEEPGEN_NUM_QUERIES: Number of query tokens (default: 128)
-        DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE: Connector hidden size (default: 2048)
-        DG_DEEPGEN_CONNECTOR_NUM_LAYERS: Number of connector layers (default: 6)
-        DG_DEEPGEN_VIT_INPUT_SIZE: ViT input size (default: 448)
-        DG_DEEPGEN_LORA_RANK: LoRA rank (default: 64)
+    Environment variables:
+        DG_DEEPGEN_CONFIG: Config file name (required, e.g., "deepgen")
+        DG_DEEPGEN_DIFFUSION_MODEL_PATH: Override diffusion model path (SD3.5)
+        DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
+        DG_DEEPGEN_CHECKPOINT: Model checkpoint path
+        DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
     """
 
     def __init__(
@@ -62,9 +62,8 @@ class DeepGenT2IBackend(BaseBackend):
     def load_model(self, **kwargs) -> None:
         """Load DeepGen model.
 
-        The model requires both SD3.5 and Qwen2.5-VL paths. These can be specified via:
-        1. model_name in backend_config (format: "sd3_path,qwen_path")
-        2. Environment variables DG_DEEPGEN_SD3_MODEL_PATH and DG_DEEPGEN_QWEN_MODEL_PATH
+        The model configuration is loaded from the config file specified by
+        DG_DEEPGEN_CONFIG. Model paths can be overridden via environment variables.
 
         Args:
             **kwargs: Additional arguments
@@ -72,54 +71,28 @@ class DeepGenT2IBackend(BaseBackend):
         from diffgentor.models.deepgen import DeepGenModel
         from diffgentor.models.deepgen.model import DeepGenModelConfig
 
-        # Get model paths
-        sd3_path = self._env.sd3_model_path
-        qwen_path = self._env.qwen_model_path
-
-        # If not set via env, try to parse from model_name
-        if not sd3_path or not qwen_path:
-            if "," in self.model_name:
-                parts = self.model_name.split(",")
-                if len(parts) >= 2:
-                    sd3_path = sd3_path or parts[0].strip()
-                    qwen_path = qwen_path or parts[1].strip()
-            else:
-                # Assume model_name is the base path containing both models
-                sd3_path = sd3_path or self.model_name
-                qwen_path = qwen_path or self.model_name
-
-        if not sd3_path:
+        # Validate config is loaded
+        if not self._env.config_name:
             raise ValueError(
-                "SD3 model path not specified. Set DG_DEEPGEN_SD3_MODEL_PATH or use "
-                "--model_name 'sd3_path,qwen_path'"
+                "DeepGen config not specified. "
+                "Set DG_DEEPGEN_CONFIG environment variable (e.g., DG_DEEPGEN_CONFIG=deepgen)"
             )
-        if not qwen_path:
-            raise ValueError(
-                "Qwen model path not specified. Set DG_DEEPGEN_QWEN_MODEL_PATH or use "
-                "--model_name 'sd3_path,qwen_path'"
-            )
+
+        # Create model config from environment
+        config = DeepGenModelConfig.from_env(self._env)
 
         print_rank0(f"Loading DeepGen model:")
-        print_rank0(f"  SD3 path: {sd3_path}")
-        print_rank0(f"  Qwen path: {qwen_path}")
-
-        # Create model config
-        config = DeepGenModelConfig(
-            sd3_model_path=sd3_path,
-            qwen_model_path=qwen_path,
-            num_queries=self._env.num_queries,
-            connector_hidden_size=self._env.connector_hidden_size,
-            connector_num_layers=self._env.connector_num_layers,
-            vit_input_size=self._env.vit_input_size,
-            lora_rank=self._env.lora_rank,
-        )
+        print_rank0(f"  Config: {self._env.config_name}")
+        print_rank0(f"  Diffusion model: {config.diffusion_model_path}")
+        print_rank0(f"  AR model: {config.ar_model_path}")
+        if self._env.checkpoint:
+            print_rank0(f"  Checkpoint: {self._env.checkpoint}")
 
         # Load model
-        checkpoint = self._env.checkpoint_path()
         self._model = DeepGenModel(
             config=config,
-            pretrained_pth=checkpoint,
-            use_activation_checkpointing=False,
+            pretrained_pth=self._env.checkpoint,
+            use_activation_checkpointing=self._env.use_activation_checkpointing,
         )
 
         # Move to device
@@ -145,12 +118,12 @@ class DeepGenT2IBackend(BaseBackend):
 
         Args:
             prompt: Text prompt(s)
-            num_inference_steps: Number of inference steps (default from env)
-            guidance_scale: Guidance scale (default from env)
-            negative_prompt: Negative prompt(s) for CFG
+            num_inference_steps: Number of inference steps (default: 50)
+            guidance_scale: Guidance scale (default: 4.0)
+            negative_prompt: Negative prompt(s) for CFG (default: "")
             seed: Random seed
-            height: Output height (default from env)
-            width: Output width (default from env)
+            height: Output height (default: 512)
+            width: Output width (default: 512)
             **kwargs: Additional arguments
 
         Returns:
@@ -163,19 +136,19 @@ class DeepGenT2IBackend(BaseBackend):
         if isinstance(prompt, str):
             prompt = [prompt]
 
-        # Apply defaults - use CLI values or model defaults
+        # Apply defaults
         if num_inference_steps is None:
-            num_inference_steps = self._env.default_num_steps()
+            num_inference_steps = 50
         if guidance_scale is None:
-            guidance_scale = 4.0  # Default CFG scale for DeepGen
+            guidance_scale = 4.0
         if height is None:
-            height = self._env.default_height()
+            height = 512
         if width is None:
-            width = self._env.default_width()
+            width = 512
 
         # Handle negative prompt
         if negative_prompt is None:
-            cfg_prompt = [self._env.cfg_prompt_default()] * len(prompt)
+            cfg_prompt = [""] * len(prompt)
         elif isinstance(negative_prompt, str):
             cfg_prompt = [negative_prompt] * len(prompt)
         else:

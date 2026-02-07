@@ -38,7 +38,7 @@ Where {PREFIX} is OPENAI or GEMINI.
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -458,92 +458,140 @@ class HunyuanImage3Env(ModelEnvConfig):
 class DeepGenEnv(ModelEnvConfig):
     """DeepGen model environment variables.
 
-    DeepGen is a unified visual generation model based on Qwen2.5-VL + SD3.5,
+    DeepGen is a unified visual generation model based on AR (Qwen2.5-VL) + Diffusion (SD3.5),
     supporting both text-to-image generation and image editing.
+
+    Configuration is loaded from a Python config file specified by DG_DEEPGEN_CONFIG.
+    Model paths can be overridden via environment variables.
 
     CLI parameters (common across backends):
         --guidance_scale: CFG guidance scale (default: 4.0)
-        --num_inference_steps: Number of inference steps (default: 50)
-        --height: Output image height (default: 512)
-        --width: Output image width (default: 512)
+        --num_inference_steps: Number of inference steps
+        --height: Output image height
+        --width: Output image width
+        --negative_prompt: Negative prompt for CFG
 
-    Environment variables (model-specific):
-        DG_DEEPGEN_SD3_MODEL_PATH: Path to SD3.5 model (required if not using model_name)
-        DG_DEEPGEN_QWEN_MODEL_PATH: Path to Qwen2.5-VL model (required if not using model_name)
-        DG_DEEPGEN_CHECKPOINT: Path to model checkpoint (optional)
-        DG_DEEPGEN_CFG_PROMPT: CFG negative prompt (default: "")
-        DG_DEEPGEN_HEIGHT: Default output image height (default: 512)
-        DG_DEEPGEN_WIDTH: Default output image width (default: 512)
-        DG_DEEPGEN_NUM_STEPS: Default number of inference steps (default: 50)
-        DG_DEEPGEN_NUM_QUERIES: Number of query tokens (default: 128)
-        DG_DEEPGEN_CONNECTOR_HIDDEN_SIZE: Connector hidden size (default: 2048)
-        DG_DEEPGEN_CONNECTOR_NUM_LAYERS: Number of connector layers (default: 6)
-        DG_DEEPGEN_VIT_INPUT_SIZE: ViT input size (default: 448)
-        DG_DEEPGEN_LORA_RANK: LoRA rank (default: 64)
+    Environment variables:
+        DG_DEEPGEN_CONFIG: Config file name (required, e.g., "deepgen")
+        DG_DEEPGEN_DIFFUSION_MODEL_PATH: Override diffusion model path (SD3.5)
+        DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
+        DG_DEEPGEN_CHECKPOINT: Model checkpoint path
+        DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
     """
 
     _prefix: str = field(default="DEEPGEN", repr=False)
-    sd3_model_path: Optional[str] = None
-    qwen_model_path: Optional[str] = None
+    config_name: Optional[str] = None
+    diffusion_model_path: Optional[str] = None
+    ar_model_path: Optional[str] = None
     checkpoint: Optional[str] = None
-    cfg_prompt: str = ""
-    height: int = 512
-    width: int = 512
-    num_steps: int = 50
-    num_queries: int = 128
-    connector_hidden_size: int = 2048
-    connector_num_layers: int = 6
-    vit_input_size: int = 448
-    lora_rank: int = 64
+    max_length: int = 1024
+
+    # Loaded from config file (internal)
+    _config: Dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
     def load(cls) -> "DeepGenEnv":
-        return cls(
-            sd3_model_path=get_env_str("DEEPGEN_SD3_MODEL_PATH"),
-            qwen_model_path=get_env_str("DEEPGEN_QWEN_MODEL_PATH"),
+        """Load DeepGen environment configuration.
+
+        Loads config file specified by DG_DEEPGEN_CONFIG and applies
+        environment variable overrides for model paths.
+
+        Returns:
+            DeepGenEnv instance with loaded configuration
+
+        Raises:
+            ValueError: If DG_DEEPGEN_CONFIG is not set
+        """
+        config_name = get_env_str("DEEPGEN_CONFIG")
+
+        env = cls(
+            config_name=config_name,
+            diffusion_model_path=get_env_str("DEEPGEN_DIFFUSION_MODEL_PATH"),
+            ar_model_path=get_env_str("DEEPGEN_AR_MODEL_PATH"),
             checkpoint=get_env_str("DEEPGEN_CHECKPOINT"),
-            cfg_prompt=get_env_str("DEEPGEN_CFG_PROMPT", ""),
-            height=get_env_int("DEEPGEN_HEIGHT", 512),
-            width=get_env_int("DEEPGEN_WIDTH", 512),
-            num_steps=get_env_int("DEEPGEN_NUM_STEPS", 50),
-            num_queries=get_env_int("DEEPGEN_NUM_QUERIES", 128),
-            connector_hidden_size=get_env_int("DEEPGEN_CONNECTOR_HIDDEN_SIZE", 2048),
-            connector_num_layers=get_env_int("DEEPGEN_CONNECTOR_NUM_LAYERS", 6),
-            vit_input_size=get_env_int("DEEPGEN_VIT_INPUT_SIZE", 448),
-            lora_rank=get_env_int("DEEPGEN_LORA_RANK", 64),
+            max_length=get_env_int("DEEPGEN_MAX_LENGTH", 1024),
         )
 
-    @staticmethod
-    def sd3_path() -> Optional[str]:
-        """Get SD3 model path from environment."""
-        return get_env_str("DEEPGEN_SD3_MODEL_PATH")
+        # Load config file if specified
+        if config_name:
+            from diffgentor.models.deepgen.config import load_deepgen_config
 
-    @staticmethod
-    def qwen_path() -> Optional[str]:
-        """Get Qwen model path from environment."""
-        return get_env_str("DEEPGEN_QWEN_MODEL_PATH")
+            env._config = load_deepgen_config(config_name)
 
-    @staticmethod
-    def checkpoint_path() -> Optional[str]:
-        """Get checkpoint path from environment."""
-        return get_env_str("DEEPGEN_CHECKPOINT")
+        return env
 
-    @staticmethod
-    def cfg_prompt_default() -> str:
-        """Get default CFG prompt from environment."""
-        return get_env_str("DEEPGEN_CFG_PROMPT", "")
+    @property
+    def model_config(self) -> Dict[str, Any]:
+        """Get model configuration dict from config file."""
+        return self._config.get("model", {})
 
-    @staticmethod
-    def default_height() -> int:
-        """Get default height from environment."""
-        return get_env_int("DEEPGEN_HEIGHT", 512)
+    @property
+    def tokenizer_config(self) -> Dict[str, Any]:
+        """Get tokenizer configuration dict from config file."""
+        return self._config.get("tokenizer", {})
 
-    @staticmethod
-    def default_width() -> int:
-        """Get default width from environment."""
-        return get_env_int("DEEPGEN_WIDTH", 512)
+    @property
+    def prompt_template(self) -> Dict[str, Any]:
+        """Get prompt template dict from config file."""
+        return self._config.get("prompt_template", {})
 
-    @staticmethod
-    def default_num_steps() -> int:
-        """Get default number of steps from environment."""
-        return get_env_int("DEEPGEN_NUM_STEPS", 50)
+    @property
+    def connector_config(self) -> Dict[str, Any]:
+        """Get connector configuration from model config."""
+        return self.model_config.get("connector", {})
+
+    # Convenience properties for common config values
+    @property
+    def num_queries(self) -> int:
+        """Get number of query tokens."""
+        return self.model_config.get("num_queries", 128)
+
+    @property
+    def connector_hidden_size(self) -> int:
+        """Get connector hidden size."""
+        return self.connector_config.get("hidden_size", 2048)
+
+    @property
+    def connector_intermediate_size(self) -> int:
+        """Get connector intermediate size."""
+        return self.connector_config.get("intermediate_size", 11946)
+
+    @property
+    def connector_num_layers(self) -> int:
+        """Get number of connector layers."""
+        return self.connector_config.get("num_hidden_layers", 6)
+
+    @property
+    def connector_num_heads(self) -> int:
+        """Get number of connector attention heads."""
+        return self.connector_config.get("num_attention_heads", 32)
+
+    @property
+    def connector_attn_impl(self) -> str:
+        """Get connector attention implementation."""
+        return self.connector_config.get("_attn_implementation", "flash_attention_2")
+
+    @property
+    def freeze_lmm(self) -> bool:
+        """Get whether to freeze LMM."""
+        return self.model_config.get("freeze_lmm", True)
+
+    @property
+    def freeze_transformer(self) -> bool:
+        """Get whether to freeze transformer."""
+        return self.model_config.get("freeze_transformer", True)
+
+    @property
+    def lora_rank(self) -> int:
+        """Get LoRA rank."""
+        return self.model_config.get("lora_rank", 64)
+
+    @property
+    def lora_alpha(self) -> int:
+        """Get LoRA alpha."""
+        return self.model_config.get("lora_alpha", 128)
+
+    @property
+    def use_activation_checkpointing(self) -> bool:
+        """Get whether to use activation checkpointing."""
+        return self.model_config.get("use_activation_checkpointing", False)

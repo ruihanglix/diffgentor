@@ -173,10 +173,12 @@ diffgentor edit --backend hunyuan_image_3 \
     --num_inference_steps 8
 
 # DeepGen
-DG_DEEPGEN_SD3_MODEL_PATH=/path/to/sd3.5 \
-DG_DEEPGEN_QWEN_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CONFIG=deepgen \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
-    --model_name /path/to/deepgen_checkpoint \
+    --model_name deepgen \
     --input data.csv \
     --guidance_scale 4.0
 ```
