@@ -29,23 +29,38 @@ DeepGen uses a Python config file system. Configuration is loaded from `diffgent
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DG_DEEPGEN_CONFIG` | Config file name (e.g., `deepgen`) | **Yes** |
-| `DG_DEEPGEN_DIFFUSION_MODEL_PATH` | Diffusion model path (SD3.5) | **Yes** |
-| `DG_DEEPGEN_AR_MODEL_PATH` | AR model path (Qwen2.5-VL) | **Yes** |
-| `DG_DEEPGEN_CHECKPOINT` | Model checkpoint path | No |
-| `DG_DEEPGEN_MAX_LENGTH` | Maximum sequence length | No (default: 1024) |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DG_DEEPGEN_CONFIG` | Config file name | `deepgen` |
+| `DG_DEEPGEN_DIFFUSION_MODEL_PATH` | Diffusion model path (SD3.5) | **Required** |
+| `DG_DEEPGEN_AR_MODEL_PATH` | AR model path (Qwen2.5-VL) | **Required** |
+| `DG_DEEPGEN_MAX_LENGTH` | Maximum sequence length | `1024` |
+| `DG_DEEPGEN_GPUS_PER_MODEL` | Number of GPUs per model instance | `1` |
+| `DG_DEEPGEN_DEBUG_CHECKPOINT` | Enable checkpoint loading debug log | `false` |
+| `DG_DEEPGEN_IMAGE_RESIZE_MODE` | Image resize mode (see below) | `fix_pixels` |
+
+### Image Resize Modes
+
+The `DG_DEEPGEN_IMAGE_RESIZE_MODE` environment variable controls how input images are resized:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `fix_pixels` | Keep total pixel count constant (`ratio = 512 / sqrt(h*w)`), align to 32 | Best for maintaining image quality |
+| `dynamic` | Keep aspect ratio, limit max edge to 512, align to 32 | Best for preserving aspect ratio |
+| `direct` | Force resize to exact `--height` x `--width` from CLI | When exact output size is required |
+
+**Note**: For `direct` mode, you must specify `--height` and `--width` CLI arguments.
 
 ### CLI Parameters
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--guidance_scale` | CFG guidance scale | 4.0 |
-| `--num_inference_steps` | Number of denoising steps | 50 |
-| `--height` | Output image height | 512 |
-| `--width` | Output image width | 512 |
-| `--negative_prompt` | Negative prompt for CFG | "" |
+| `--model_name` | Path to model checkpoint (.safetensors or .pt) | **Required** |
+| `--guidance_scale` | CFG guidance scale | `4.0` |
+| `--num_inference_steps` | Number of denoising steps | `50` |
+| `--height` | Output image height | Auto (based on resize mode) |
+| `--width` | Output image width | Auto (based on resize mode) |
+| `--negative_prompt` | Negative prompt for CFG | (descriptive default) |
 | `--seed` | Random seed | Random |
 
 ## Basic Usage
@@ -53,12 +68,10 @@ DeepGen uses a Python config file system. Configuration is loaded from `diffgent
 ### Image Editing
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --input data.csv \
     --output_dir ./output
 ```
@@ -66,19 +79,17 @@ diffgentor edit --backend deepgen \
 ### Text-to-Image Generation
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --prompt "A beautiful sunset over the ocean" \
     --output_dir ./output
 ```
 
 ## Model Files
 
-The model requires two base models and an optional checkpoint:
+The model requires two base models and a checkpoint:
 
 ### Diffusion Model (SD3.5)
 
@@ -96,19 +107,17 @@ huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct --local-dir ./qwen2.5-vl-3b
 
 ### Checkpoint
 
-The checkpoint contains the trained connector and LoRA weights. It should be a `.safetensors` or `.pt` file.
+The checkpoint contains the trained connector and LoRA weights. It should be a `.safetensors` or `.pt` file. Pass it via `--model_name`.
 
 ## Examples
 
 ### Basic Image Editing
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --input data.csv \
     --output_dir ./output
 ```
@@ -116,32 +125,69 @@ diffgentor edit --backend deepgen \
 ### Custom CFG Scale
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --input data.csv \
     --output_dir ./output \
     --guidance_scale 6.0 \
     --num_inference_steps 30
 ```
 
-### Higher Resolution Output
+### Fixed Output Size (Direct Resize Mode)
 
 ```bash
-DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
+DG_DEEPGEN_IMAGE_RESIZE_MODE=direct \
 diffgentor edit --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --input data.csv \
     --output_dir ./output \
-    --height 1024 \
-    --width 1024
+    --height 512 \
+    --width 512
 ```
+
+### Preserve Aspect Ratio (Dynamic Resize Mode)
+
+```bash
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
+DG_DEEPGEN_IMAGE_RESIZE_MODE=dynamic \
+diffgentor edit --backend deepgen \
+    --model_name /path/to/checkpoint.safetensors \
+    --input data.csv \
+    --output_dir ./output
+```
+
+### Multi-GPU (8 instances on 8 GPUs)
+
+```bash
+DG_DEEPGEN_GPUS_PER_MODEL=1 \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
+diffgentor edit --backend deepgen \
+    --num_gpus 8 \
+    --model_name /path/to/checkpoint.safetensors \
+    --input data.csv \
+    --output_dir ./output
+```
+
+### Debug Checkpoint Loading
+
+```bash
+DG_DEEPGEN_DEBUG_CHECKPOINT=1 \
+DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
+DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
+diffgentor edit --backend deepgen \
+    --model_name /path/to/checkpoint.safetensors \
+    --input data.csv \
+    --output_dir ./output \
+    --log_dir ./logs
+```
+
+This will write detailed checkpoint loading info to `./logs/checkpoint_debug.log`.
 
 ## Custom Configuration
 
@@ -193,9 +239,10 @@ diffgentor edit --backend deepgen ...
 ## Notes
 
 - **VRAM Requirements**: ~24GB+ for the full model (Qwen2.5-VL-3B + SD3.5-Medium)
-- **Multi-GPU**: Currently supports single GPU inference
+- **Multi-GPU**: Supports multiple model instances via `DG_DEEPGEN_GPUS_PER_MODEL`
 - **Supported Formats**: Input images can be URLs or local paths
 - **Output Format**: PNG images
+- **ViT Input Size**: Fixed at 448 (not configurable)
 
 ## Troubleshooting
 

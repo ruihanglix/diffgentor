@@ -162,6 +162,8 @@ Examples:
 - `DG_DEEPGEN_GPUS_PER_MODEL=1`
 - `DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5`
 - `DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl`
+- `DG_DEEPGEN_IMAGE_RESIZE_MODE=fix_pixels`
+- `DG_DEEPGEN_DEBUG_CHECKPOINT=1`
 
 ### CLI Arguments vs Environment Variables
 

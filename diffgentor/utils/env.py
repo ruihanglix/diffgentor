@@ -479,6 +479,14 @@ class DeepGenEnv(ModelEnvConfig):
         DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
         DG_DEEPGEN_GPUS_PER_MODEL: Number of GPUs per model instance (default: 1)
         DG_DEEPGEN_DEBUG_CHECKPOINT: Enable checkpoint loading debug log (default: 0)
+        DG_DEEPGEN_IMAGE_RESIZE_MODE: Image resize mode (default: "fix_pixels")
+            Options: "fix_pixels", "dynamic", "direct"
+            - fix_pixels: Keep total pixel count constant (ratio = image_size / sqrt(h*w)),
+                          align dimensions to 32. Good for maintaining image quality.
+            - dynamic: Keep aspect ratio, limit max edge to image_size, align to 32.
+                       Good for preserving aspect ratio.
+            - direct: Force resize to exact --height x --width from CLI.
+                      Requires --height and --width to be specified.
 
     Multi-GPU Usage:
         The Launcher automatically handles GPU assignment based on DG_DEEPGEN_GPUS_PER_MODEL.
@@ -498,6 +506,7 @@ class DeepGenEnv(ModelEnvConfig):
     ar_model_path: Optional[str] = None
     max_length: int = 1024
     debug_checkpoint: bool = False
+    image_resize_mode: str = "fix_pixels"
 
     # Loaded from config file (internal)
     _config: Dict[str, Any] = field(default_factory=dict, repr=False)
@@ -521,6 +530,7 @@ class DeepGenEnv(ModelEnvConfig):
             ar_model_path=get_env_str("DEEPGEN_AR_MODEL_PATH"),
             max_length=get_env_int("DEEPGEN_MAX_LENGTH", 1024),
             debug_checkpoint=get_env_bool("DEEPGEN_DEBUG_CHECKPOINT", False),
+            image_resize_mode=get_env_str("DEEPGEN_IMAGE_RESIZE_MODE", "fix_pixels"),
         )
 
         # Load config file

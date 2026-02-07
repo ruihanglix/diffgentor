@@ -27,7 +27,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler
 from diffusers.models.transformers import SD3Transformer2DModel
-from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import StableDiffusion3Pipeline
+from diffgentor.models.deepgen.pipeline_stable_diffusion_3_dynamic import StableDiffusion3Pipeline
 from diffusers.utils.torch_utils import randn_tensor
 from peft import LoraConfig
 from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
@@ -491,15 +491,20 @@ class DeepGenModel(nn.Module):
 
     def gradient_checkpointing_enable(self):
         """Enable gradient checkpointing."""
+        self._gradient_checkpointing_enabled = True
         self.llm.gradient_checkpointing_enable()
         self.transformer.enable_gradient_checkpointing()
         self.connector.gradient_checkpointing = True
 
     def gradient_checkpointing_disable(self):
         """Disable gradient checkpointing."""
-        self.llm.gradient_checkpointing_disable()
-        self.transformer.disable_gradient_checkpointing()
-        self.connector.gradient_checkpointing = False
+        # Only disable if previously enabled to avoid AttributeError
+        # when _require_grads_hook doesn't exist
+        if getattr(self, "_gradient_checkpointing_enabled", False):
+            self.llm.gradient_checkpointing_disable()
+            self.transformer.disable_gradient_checkpointing()
+            self.connector.gradient_checkpointing = False
+        self._gradient_checkpointing_enabled = False
 
     def train(self, mode: bool = True):
         """Set training mode."""
@@ -508,6 +513,8 @@ class DeepGenModel(nn.Module):
             self.vae.train(mode=False)
         if not mode:
             self.gradient_checkpointing_disable()
+        elif getattr(self, "_gradient_checkpointing_enabled", False):
+            self.gradient_checkpointing_enable()
         return self
 
     @torch.no_grad()
@@ -831,6 +838,7 @@ class DeepGenModel(nn.Module):
             negative_pooled_prompt_embeds=pooled_out[b:],
             generator=generator,
             output_type="latent",
+            cond_latents=cond_latents,
         ).images.to(self.dtype)
 
         return self.latents_to_pixels(samples)

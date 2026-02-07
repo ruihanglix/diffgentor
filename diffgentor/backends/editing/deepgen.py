@@ -22,8 +22,46 @@ from diffgentor.utils.env import DeepGenEnv
 from diffgentor.utils.logging import print_rank0
 
 
-def resize_for_deepgen(image: Image.Image, max_size: int = 512, unit_size: int = 32) -> Tuple[Image.Image, int, int]:
-    """Resize image for DeepGen model.
+# Default negative prompt for CFG guidance
+DEFAULT_NEGATIVE_PROMPT = (
+    "blurry, low quality, low resolution, distorted, deformed, broken content, "
+    "missing parts, damaged details, artifacts, glitch, noise, pixelated, grainy, "
+    "compression artifacts, bad composition, wrong proportion, incomplete editing, "
+    "unfinished, unedited areas."
+)
+
+
+def resize_fix_pixels(
+    image: Image.Image, image_size: int = 512, unit_size: int = 32
+) -> Tuple[Image.Image, int, int]:
+    """Resize image keeping total pixel count constant.
+
+    Scales the image so that sqrt(h * w) ≈ image_size, then aligns dimensions
+    to unit_size (32). This maintains image quality by preserving the total
+    number of pixels while adjusting aspect ratio slightly for alignment.
+
+    Args:
+        image: Input PIL image
+        image_size: Target sqrt(pixels) (default: 512, meaning ~262k pixels)
+        unit_size: Unit size for alignment (default: 32)
+
+    Returns:
+        Tuple of (resized_image, target_width, target_height)
+    """
+    w, h = image.size
+    ratio = image_size / ((h * w) ** 0.5)
+
+    target_h = math.ceil(h * ratio / unit_size) * unit_size
+    target_w = math.ceil(w * ratio / unit_size) * unit_size
+
+    resized = image.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    return resized, target_w, target_h
+
+
+def resize_dynamic(
+    image: Image.Image, max_size: int = 512, unit_size: int = 32
+) -> Tuple[Image.Image, int, int]:
+    """Resize image keeping aspect ratio, limiting max edge.
 
     Ensures the image dimensions are multiples of unit_size (32) for proper
     processing by the vision transformer. After 28/32 scaling in the model,
@@ -57,6 +95,80 @@ def resize_for_deepgen(image: Image.Image, max_size: int = 512, unit_size: int =
 
     resized = image.resize((target_w, target_h), Image.Resampling.LANCZOS)
     return resized, target_w, target_h
+
+
+def resize_direct(
+    image: Image.Image, width: int, height: int, unit_size: int = 32
+) -> Tuple[Image.Image, int, int]:
+    """Resize image directly to exact dimensions.
+
+    Forces resize to specified dimensions, aligning to unit_size.
+    May distort aspect ratio if target dimensions don't match original ratio.
+
+    Args:
+        image: Input PIL image
+        width: Target width (will be aligned to unit_size)
+        height: Target height (will be aligned to unit_size)
+        unit_size: Unit size for alignment (default: 32)
+
+    Returns:
+        Tuple of (resized_image, aligned_width, aligned_height)
+    """
+    # Align to unit_size
+    aligned_w = math.ceil(width / unit_size) * unit_size
+    aligned_h = math.ceil(height / unit_size) * unit_size
+
+    resized = image.resize((aligned_w, aligned_h), Image.Resampling.LANCZOS)
+    return resized, aligned_w, aligned_h
+
+
+def resize_image_for_deepgen(
+    image: Image.Image,
+    mode: str = "fix_pixels",
+    image_size: int = 512,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    unit_size: int = 32,
+) -> Tuple[Image.Image, int, int]:
+    """Resize image for DeepGen model based on mode.
+
+    Supports three resize strategies:
+    - fix_pixels: Keep total pixel count constant, good for quality
+    - dynamic: Keep aspect ratio, limit max edge, good for preserving shape
+    - direct: Force exact dimensions, requires width/height from CLI
+
+    Args:
+        image: Input PIL image
+        mode: Resize mode - "fix_pixels", "dynamic", or "direct"
+        image_size: Target size for fix_pixels/dynamic modes (default: 512)
+        width: Target width for direct mode (required if mode="direct")
+        height: Target height for direct mode (required if mode="direct")
+        unit_size: Unit size for alignment (default: 32)
+
+    Returns:
+        Tuple of (resized_image, target_width, target_height)
+
+    Raises:
+        ValueError: If mode is "direct" but width/height not specified,
+                    or if mode is unknown
+    """
+    if mode == "fix_pixels":
+        return resize_fix_pixels(image, image_size, unit_size)
+    elif mode == "dynamic":
+        return resize_dynamic(image, image_size, unit_size)
+    elif mode == "direct":
+        if width is None or height is None:
+            raise ValueError(
+                "width and height must be specified for direct resize mode. "
+                "Use --width and --height CLI arguments."
+            )
+        return resize_direct(image, width, height, unit_size)
+    else:
+        raise ValueError(
+            f"Unknown resize mode: {mode}. "
+            "Use 'fix_pixels', 'dynamic', or 'direct'. "
+            "Set via DG_DEEPGEN_IMAGE_RESIZE_MODE environment variable."
+        )
 
 
 class DeepGenEditingBackend(BaseEditingBackend):
@@ -200,19 +312,29 @@ class DeepGenEditingBackend(BaseEditingBackend):
         if guidance_scale is None:
             guidance_scale = 4.0
         if negative_prompt is None:
-            negative_prompt = ""
+            negative_prompt = DEFAULT_NEGATIVE_PROMPT
 
         # Set seed
         generator = None
         if seed is not None:
             generator = torch.Generator(device=self._model.device).manual_seed(seed)
 
+        # Get resize mode from environment
+        resize_mode = self._env.image_resize_mode
+
         # Convert PIL images to tensors with proper resizing
         # Images must be resized to dimensions that are multiples of 32
         pixel_values = []
         for img in images:
-            # Resize image to proper dimensions (multiples of 32)
-            img_resized, target_w, target_h = resize_for_deepgen(img, max_size=512, unit_size=32)
+            # Resize image based on mode
+            img_resized, target_w, target_h = resize_image_for_deepgen(
+                image=img,
+                mode=resize_mode,
+                image_size=512,
+                width=width,
+                height=height,
+                unit_size=32,
+            )
             # Convert to tensor
             img_tensor = torch.from_numpy(np.array(img_resized)).to(
                 dtype=self._model.dtype, device=self._model.device
@@ -222,9 +344,19 @@ class DeepGenEditingBackend(BaseEditingBackend):
             img_tensor = 2 * (img_tensor / 255) - 1
             pixel_values.append(img_tensor)
 
-        # Use the first image's resized dimensions for output if not specified
+        # Determine output dimensions based on resize mode
+        # For fix_pixels and dynamic modes, use the resized dimensions from first image
+        # For direct mode, use the CLI-specified dimensions (already used in resize)
         if height is None or width is None:
-            _, out_w, out_h = resize_for_deepgen(images[0], max_size=512, unit_size=32)
+            # Re-compute dimensions for first image to get output size
+            _, out_w, out_h = resize_image_for_deepgen(
+                image=images[0],
+                mode=resize_mode,
+                image_size=512,
+                width=width,
+                height=height,
+                unit_size=32,
+            )
             if height is None:
                 height = out_h
             if width is None:

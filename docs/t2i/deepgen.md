@@ -36,6 +36,18 @@ DeepGen uses a config file system to manage model parameters. Config files are l
 | `DG_DEEPGEN_AR_MODEL_PATH` | Path to Qwen2.5-VL AR model | Required |
 | `DG_DEEPGEN_MAX_LENGTH` | Max sequence length | `1024` |
 | `DG_DEEPGEN_GPUS_PER_MODEL` | Number of GPUs per model instance | `1` |
+| `DG_DEEPGEN_DEBUG_CHECKPOINT` | Enable checkpoint loading debug log | `false` |
+| `DG_DEEPGEN_IMAGE_RESIZE_MODE` | Image resize mode (for editing) | `fix_pixels` |
+
+### Image Resize Modes (for Editing)
+
+The `DG_DEEPGEN_IMAGE_RESIZE_MODE` environment variable controls how input images are resized:
+
+| Mode | Description |
+|------|-------------|
+| `fix_pixels` | Keep total pixel count constant, align to 32 |
+| `dynamic` | Keep aspect ratio, limit max edge to 512, align to 32 |
+| `direct` | Force resize to exact `--height` x `--width` from CLI |
 
 ### CLI Parameters
 
