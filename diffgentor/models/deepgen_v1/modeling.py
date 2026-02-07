@@ -581,9 +581,36 @@ class DeepGenModel(nn.Module):
         Returns:
             Tuple of (image_embeds list, image_grid_thw tensor)
         """
-        # Resize to VIT input size
-        pixel_values = [F.interpolate(p[None], scale_factor=28 / 32, mode='bilinear') for p in pixel_values]
-        image_embeds, image_grid_thw = multi_apply(self.get_semantic_features, pixel_values, resize=False)
+        # Get vision config parameters
+        patch_size = self.lmm.config.vision_config.patch_size
+        spatial_merge_size = self.lmm.config.vision_config.spatial_merge_size
+
+        # The image dimensions must be divisible by (patch_size * spatial_merge_size)
+        align_size = patch_size * spatial_merge_size
+
+        # Resize images to ensure proper alignment
+        resized_pixel_values = []
+        for p in pixel_values:
+            # p shape: (C, H, W)
+            _, h, w = p.shape
+
+            # Scale by 28/32 first
+            new_h = int(h * 28 / 32)
+            new_w = int(w * 28 / 32)
+
+            # Align to patch_size * spatial_merge_size
+            new_h = (new_h // align_size) * align_size
+            new_w = (new_w // align_size) * align_size
+
+            # Ensure minimum size
+            new_h = max(new_h, align_size)
+            new_w = max(new_w, align_size)
+
+            # Resize
+            resized = F.interpolate(p[None], size=(new_h, new_w), mode='bilinear', align_corners=False)
+            resized_pixel_values.append(resized)
+
+        image_embeds, image_grid_thw = multi_apply(self.get_semantic_features, resized_pixel_values, resize=False)
         image_embeds = [x[0] for x in image_embeds]
         image_grid_thw = torch.cat(image_grid_thw, dim=0)
         return image_embeds, image_grid_thw
