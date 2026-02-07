@@ -152,6 +152,7 @@ class DeepGenModel(nn.Module):
         logit_std: float = 1.0,
         device: Optional[str] = None,
         torch_dtype: torch.dtype = torch.bfloat16,
+        attn_impl: str = "flash_attention_2",
     ):
         super().__init__()
 
@@ -172,42 +173,65 @@ class DeepGenModel(nn.Module):
         freeze_transformer = model_config["freeze_transformer"]
 
         # Load Qwen2.5-VL
-        print(f"Loading Qwen2.5-VL from: {qwen_path}")
+        print(f"Loading Qwen2.5-VL from: {qwen_path}", flush=True)
+        print(f"  device_map: {'auto' if device is None else device}", flush=True)
+        print(f"  torch_dtype: {torch_dtype}", flush=True)
+        print(f"  attn_implementation: {attn_impl}", flush=True)
+
+        # Determine device_map strategy
+        if device is None:
+            # Check number of available GPUs
+            num_gpus = torch.cuda.device_count()
+            if num_gpus > 1:
+                # Use auto device_map for multi-GPU
+                device_map = "auto"
+            else:
+                # Single GPU - load directly to cuda:0
+                device_map = {"": 0}
+            print(f"  Using device_map: {device_map} (num_gpus={num_gpus})", flush=True)
+        else:
+            device_map = device
+
         self.lmm = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             qwen_path,
             torch_dtype=torch_dtype,
-            attn_implementation="flash_attention_2",
-            device_map="auto" if device is None else device,
+            attn_implementation=attn_impl,
+            device_map=device_map,
         )
+        print(f"  Qwen2.5-VL loaded successfully", flush=True)
         if freeze_lmm:
             self.lmm.requires_grad_(False)
         self.freeze_lmm = freeze_lmm
 
         # Load tokenizer
+        print(f"Loading tokenizer from: {qwen_path}", flush=True)
         self.tokenizer = AutoTokenizer.from_pretrained(
             qwen_path,
             trust_remote_code=True,
             padding_side='right',
         )
+        print(f"  Tokenizer loaded successfully", flush=True)
 
         # Load diffusion Transformer
-        print(f"Loading diffusion Transformer from: {diffusion_path}")
+        print(f"Loading diffusion Transformer from: {diffusion_path}", flush=True)
         self.transformer = SD3Transformer2DModel.from_pretrained(
             diffusion_path,
             subfolder="transformer",
             torch_dtype=torch_dtype,
         )
+        print(f"  Transformer loaded successfully", flush=True)
         if freeze_transformer:
             self.transformer.requires_grad_(False)
         self.freeze_transformer = freeze_transformer
 
         # Load VAE
-        print(f"Loading VAE from: {diffusion_path}")
+        print(f"Loading VAE from: {diffusion_path}", flush=True)
         self.vae = AutoencoderKL.from_pretrained(
             diffusion_path,
             subfolder="vae",
             torch_dtype=torch_dtype,
         )
+        print(f"  VAE loaded successfully", flush=True)
         self.vae.requires_grad_(False)
 
         # Load schedulers

@@ -469,6 +469,8 @@ class DeepGenEnv(ModelEnvConfig):
         DG_DEEPGEN_CFG_PROMPT: CFG prompt for unconditional generation (default: "")
         DG_DEEPGEN_DEBUG: Debug level for checkpoint loading (default: 0)
             0 = off, 1 = basic summary, 2 = detailed report, 3 = verbose with all keys
+        DG_DEEPGEN_ATTN_IMPL: Attention implementation for Qwen2.5-VL (default: flash_attention_2)
+            Options: flash_attention_2, sdpa, eager
 
     Note: Model-specific parameters (num_queries, connector config, etc.) are defined in
     the config file specified by DG_DEEPGEN_CONFIG.
@@ -493,6 +495,7 @@ class DeepGenEnv(ModelEnvConfig):
     _gpus_per_model: int = field(default=0, repr=False)
     cfg_prompt: str = ""
     debug_level: int = 0
+    attn_impl: str = "flash_attention_2"
 
     @classmethod
     def load(cls) -> "DeepGenEnv":
@@ -503,6 +506,7 @@ class DeepGenEnv(ModelEnvConfig):
             _gpus_per_model=get_env_int("DEEPGEN_GPUS_PER_MODEL", 0),
             cfg_prompt=get_env_str("DEEPGEN_CFG_PROMPT", ""),
             debug_level=get_env_int("DEEPGEN_DEBUG", 0),
+            attn_impl=get_env_str("DEEPGEN_ATTN_IMPL", "flash_attention_2"),
         )
 
     @staticmethod

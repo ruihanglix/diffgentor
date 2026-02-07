@@ -118,6 +118,7 @@ class DeepGenBackend(BaseEditingBackend):
         print_rank0(f"  Diffusion path: {self._env.diffusion_path}")
         print_rank0(f"  Qwen path: {self._env.qwen_path}")
         print_rank0(f"  Checkpoint: {self.model_name}")
+        print_rank0(f"  Attention impl: {self._env.attn_impl}")
 
         # Determine dtype
         torch_dtype = torch.bfloat16
@@ -134,6 +135,7 @@ class DeepGenBackend(BaseEditingBackend):
             qwen_path=self._env.qwen_path,
             config_name=self._env.config,
             torch_dtype=torch_dtype,
+            attn_impl=self._env.attn_impl,
         )
 
         # Load checkpoint if provided
