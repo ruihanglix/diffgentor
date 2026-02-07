@@ -465,6 +465,7 @@ class DeepGenEnv(ModelEnvConfig):
     Model paths can be overridden via environment variables.
 
     CLI parameters (common across backends):
+        --model_name: Path to model checkpoint (.safetensors or .pt file)
         --guidance_scale: CFG guidance scale (default: 4.0)
         --num_inference_steps: Number of inference steps
         --height: Output image height
@@ -475,7 +476,6 @@ class DeepGenEnv(ModelEnvConfig):
         DG_DEEPGEN_CONFIG: Config file name (required, e.g., "deepgen")
         DG_DEEPGEN_DIFFUSION_MODEL_PATH: Override diffusion model path (SD3.5)
         DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
-        DG_DEEPGEN_CHECKPOINT: Model checkpoint path
         DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
     """
 
@@ -483,7 +483,6 @@ class DeepGenEnv(ModelEnvConfig):
     config_name: Optional[str] = None
     diffusion_model_path: Optional[str] = None
     ar_model_path: Optional[str] = None
-    checkpoint: Optional[str] = None
     max_length: int = 1024
 
     # Loaded from config file (internal)
@@ -508,7 +507,6 @@ class DeepGenEnv(ModelEnvConfig):
             config_name=config_name,
             diffusion_model_path=get_env_str("DEEPGEN_DIFFUSION_MODEL_PATH"),
             ar_model_path=get_env_str("DEEPGEN_AR_MODEL_PATH"),
-            checkpoint=get_env_str("DEEPGEN_CHECKPOINT"),
             max_length=get_env_int("DEEPGEN_MAX_LENGTH", 1024),
         )
 

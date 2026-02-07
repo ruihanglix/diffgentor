@@ -176,9 +176,8 @@ diffgentor edit --backend hunyuan_image_3 \
 DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor edit --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --input data.csv \
     --guidance_scale 4.0
 ```

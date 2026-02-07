@@ -27,15 +27,26 @@ Required packages:
 
 DeepGen uses a config file system to manage model parameters. Config files are located in `diffgentor/models/deepgen/config/`.
 
-### Required Environment Variables
+### Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `DG_DEEPGEN_CONFIG` | Config file name (e.g., `deepgen`) | Yes |
 | `DG_DEEPGEN_DIFFUSION_MODEL_PATH` | Path to SD3.5 diffusion model | Yes |
 | `DG_DEEPGEN_AR_MODEL_PATH` | Path to Qwen2.5-VL AR model | Yes |
-| `DG_DEEPGEN_CHECKPOINT` | Path to model checkpoint (.safetensors) | No |
 | `DG_DEEPGEN_MAX_LENGTH` | Max sequence length | No (default: 1024) |
+
+### CLI Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--model_name` | Path to model checkpoint (.safetensors or .pt) | Required |
+| `--guidance_scale` | CFG guidance scale | `4.0` |
+| `--num_inference_steps` | Number of denoising steps | `50` |
+| `--height` | Output image height | `512` |
+| `--width` | Output image width | `512` |
+| `--negative_prompt` | Negative prompt for CFG | `""` |
+| `--seed` | Random seed | Random |
 
 ### Config File
 
@@ -54,27 +65,15 @@ The config file (e.g., `diffgentor/models/deepgen/config/deepgen.py`) contains m
 DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --prompt "A beautiful sunset over the ocean" \
     --output_dir ./output
 ```
 
-## CLI Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `--guidance_scale` | CFG guidance scale | `4.0` |
-| `--num_inference_steps` | Number of denoising steps | `50` |
-| `--height` | Output image height | `512` |
-| `--width` | Output image width | `512` |
-| `--negative_prompt` | Negative prompt for CFG | `""` |
-| `--seed` | Random seed | Random |
-
 ## Model Files
 
-The model requires two base models and an optional checkpoint:
+The model requires two base models and a checkpoint:
 
 ### SD3.5 Model (Diffusion Model)
 
@@ -92,7 +91,7 @@ huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct --local-dir ./qwen2.5-vl-3b
 
 ### Checkpoint
 
-The checkpoint contains the trained connector and LoRA weights. It should be a `.safetensors` or `.pt` file.
+The checkpoint contains the trained connector and LoRA weights. It should be a `.safetensors` or `.pt` file. Pass it via `--model_name`.
 
 ## Examples
 
@@ -102,9 +101,8 @@ The checkpoint contains the trained connector and LoRA weights. It should be a `
 DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --prompt "A futuristic cityscape at night" \
     --output_dir ./output
 ```
@@ -115,9 +113,8 @@ diffgentor t2i --backend deepgen \
 DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --prompts_file prompts.jsonl \
     --output_dir ./output
 ```
@@ -128,9 +125,8 @@ diffgentor t2i --backend deepgen \
 DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --prompt "A detailed landscape painting" \
     --output_dir ./output \
     --guidance_scale 6.0 \
@@ -143,9 +139,8 @@ diffgentor t2i --backend deepgen \
 DG_DEEPGEN_CONFIG=deepgen \
 DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5 \
 DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl \
-DG_DEEPGEN_CHECKPOINT=/path/to/checkpoint.safetensors \
 diffgentor t2i --backend deepgen \
-    --model_name deepgen \
+    --model_name /path/to/checkpoint.safetensors \
     --prompt "A high-resolution portrait" \
     --output_dir ./output \
     --height 1024 \

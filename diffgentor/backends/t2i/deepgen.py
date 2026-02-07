@@ -30,6 +30,7 @@ class DeepGenT2IBackend(BaseBackend):
     overridden via environment variables.
 
     CLI parameters:
+        --model_name: Path to model checkpoint (.safetensors or .pt file)
         --guidance_scale: CFG guidance scale (default: 4.0)
         --num_inference_steps: Number of inference steps (default: 50)
         --height: Output image height (default: 512)
@@ -40,7 +41,6 @@ class DeepGenT2IBackend(BaseBackend):
         DG_DEEPGEN_CONFIG: Config file name (required, e.g., "deepgen")
         DG_DEEPGEN_DIFFUSION_MODEL_PATH: Override diffusion model path (SD3.5)
         DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
-        DG_DEEPGEN_CHECKPOINT: Model checkpoint path
         DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
     """
 
@@ -85,13 +85,13 @@ class DeepGenT2IBackend(BaseBackend):
         print_rank0(f"  Config: {self._env.config_name}")
         print_rank0(f"  Diffusion model: {config.diffusion_model_path}")
         print_rank0(f"  AR model: {config.ar_model_path}")
-        if self._env.checkpoint:
-            print_rank0(f"  Checkpoint: {self._env.checkpoint}")
+        if self.model_name:
+            print_rank0(f"  Checkpoint: {self.model_name}")
 
-        # Load model
+        # Load model (use model_name as checkpoint path)
         self._model = DeepGenModel(
             config=config,
-            pretrained_pth=self._env.checkpoint,
+            pretrained_pth=self.model_name,
             use_activation_checkpointing=self._env.use_activation_checkpointing,
         )
 
