@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A unified visual generation data synthesis factory supporting multiple backends (diffusers, xDiT, OpenAI API)"
 readme = "README.md"
 license = { text = "Apache-2.0" }
-requires-python = "==3.10.*"
+requires-python = ">=3.10"
 authors = [{ name = "diffgentor team" }]
 keywords = ["diffusion", "image-generation", "image-editing", "text-to-image"]
 classifiers = [
@@ -52,8 +52,8 @@ dev = ["pytest", "black", "ruff", "mypy"]
 diffgentor = "diffgentor.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/diffgentor/diffgentor-light"
-Documentation = "https://github.com/diffgentor/diffgentor-light#readme"
+Homepage = "https://github.com/ruihanglix/diffgentor"
+Documentation = "https://github.com/ruihanglix/diffgentor#readme"
 
 [build-system]
 requires = ["hatchling"]
