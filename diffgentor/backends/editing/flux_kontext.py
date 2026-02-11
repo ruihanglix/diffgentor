@@ -6,10 +6,13 @@
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
 
+import numpy as np
 import torch
+from einops import rearrange, repeat
 from PIL import Image
 
 from diffgentor.backends.base import BaseEditingBackend
@@ -105,6 +108,61 @@ class FluxKontextOfficialBackend(BaseEditingBackend):
                 "Make sure the flux1 submodule is properly initialized."
             )
 
+    def _encode_extra_image(
+        self,
+        image: Image.Image,
+        image_index: int,
+        torch_device: torch.device,
+    ) -> tuple:
+        """Encode an additional conditioning image for multi-image Kontext input.
+
+        Each extra image is encoded through the AE and assigned a unique positional ID
+        (image_index) in the first dimension of img_cond_ids so the model can distinguish
+        multiple conditioning images.
+
+        Args:
+            image: PIL image to encode.
+            image_index: Positional index for this image (2 for second image, 3 for third, etc.).
+                The first conditioning image uses index 1 (set by prepare_kontext), and the
+                noise image uses index 0.
+            torch_device: Device to run encoding on.
+
+        Returns:
+            Tuple of (img_cond_seq, img_cond_seq_ids) tensors ready to concatenate.
+        """
+        from flux.util import PREFERED_KONTEXT_RESOLUTIONS
+
+        img = image.convert("RGB")
+        w_orig, h_orig = img.size
+        aspect_ratio = w_orig / h_orig
+
+        # Match to closest preferred Kontext resolution
+        _, width, height = min(
+            (abs(aspect_ratio - w / h), w, h) for w, h in PREFERED_KONTEXT_RESOLUTIONS
+        )
+        width = 2 * int(width / 16)
+        height = 2 * int(height / 16)
+
+        img = img.resize((8 * width, 8 * height), Image.Resampling.LANCZOS)
+        img_np = np.array(img)
+        img_tensor = torch.from_numpy(img_np).float() / 127.5 - 1.0
+        img_tensor = rearrange(img_tensor, "h w c -> 1 c h w")
+
+        with torch.no_grad():
+            img_cond = self._ae.encode(img_tensor.to(torch_device))
+
+        img_cond = img_cond.to(torch.bfloat16)
+        img_cond = rearrange(img_cond, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
+
+        # Build positional IDs: first dim = image_index, then h/w grid
+        img_cond_ids = torch.zeros(height // 2, width // 2, 3)
+        img_cond_ids[..., 0] = image_index
+        img_cond_ids[..., 1] = img_cond_ids[..., 1] + torch.arange(height // 2)[:, None]
+        img_cond_ids[..., 2] = img_cond_ids[..., 2] + torch.arange(width // 2)[None, :]
+        img_cond_ids = repeat(img_cond_ids, "h w c -> b (h w) c", b=1)
+
+        return img_cond, img_cond_ids.to(torch_device)
+
     def edit(
         self,
         images: Union[Image.Image, List[Image.Image]],
@@ -116,13 +174,18 @@ class FluxKontextOfficialBackend(BaseEditingBackend):
     ) -> List[Image.Image]:
         """Edit images using Flux Kontext Official.
 
+        Supports multi-image conditioning: the first image is processed through
+        prepare_kontext (assigned positional ID 1), and each additional image is
+        encoded separately and concatenated along the sequence dimension with
+        incrementing positional IDs (2, 3, ...).
+
         Args:
             images: Input image(s) to edit
             instruction: Editing instruction
             num_inference_steps: Number of inference steps (default: 30)
             guidance_scale: Guidance scale (default: 2.5)
             seed: Random seed
-            **kwargs: Additional arguments
+            **kwargs: Additional arguments (width, height for target size)
 
         Returns:
             List of edited PIL Images
@@ -143,9 +206,10 @@ class FluxKontextOfficialBackend(BaseEditingBackend):
         if not images:
             raise ValueError("No input image provided")
 
-        # Use first image
-        input_image = images[0].convert("RGB")
+        # Convert all images to RGB
+        images = [img.convert("RGB") for img in images]
 
+        temp_paths: List[str] = []
         try:
             from flux.sampling import denoise, get_schedule, prepare_kontext, unpack
 
@@ -161,88 +225,108 @@ class FluxKontextOfficialBackend(BaseEditingBackend):
 
             print_rank0(f"Generating with seed {seed}")
 
-            # Save input image to temp file for prepare_kontext
-            import tempfile
+            # Save first image to temp file for prepare_kontext
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-                temp_path = f.name
-                input_image.save(temp_path)
+                temp_paths.append(f.name)
+                images[0].save(f.name)
 
-            try:
-                # Get target size from kwargs or use input image size
-                target_width = kwargs.get("width")
-                target_height = kwargs.get("height")
+            # Get target size from kwargs or use input image size
+            target_width = kwargs.get("width")
+            target_height = kwargs.get("height")
 
-                # Offload if needed
-                if self._offload:
-                    self._t5 = self._t5.to(torch_device)
-                    self._clip = self._clip.to(torch_device)
-                    self._ae = self._ae.to(torch_device)
+            # Offload TEs and AE to GPU if needed
+            if self._offload:
+                self._t5 = self._t5.to(torch_device)
+                self._clip = self._clip.to(torch_device)
+                self._ae = self._ae.to(torch_device)
 
-                # Prepare input
-                inp, height, width = prepare_kontext(
-                    t5=self._t5,
-                    clip=self._clip,
-                    prompt=instruction,
-                    ae=self._ae,
-                    img_cond_path=temp_path,
-                    target_width=target_width,
-                    target_height=target_height,
-                )
+            # Prepare input with first conditioning image
+            inp, height, width = prepare_kontext(
+                t5=self._t5,
+                clip=self._clip,
+                prompt=instruction,
+                ae=self._ae,
+                img_cond_path=temp_paths[0],
+                seed=seed,
+                device=torch_device,
+                target_width=target_width,
+                target_height=target_height,
+            )
 
-                if self._offload:
-                    self._t5 = self._t5.cpu()
-                    self._clip = self._clip.cpu()
-                    self._ae = self._ae.cpu()
-                    torch.cuda.empty_cache()
-                    self._model = self._model.to(torch_device)
+            # Remove img_cond_orig (not consumed by denoise)
+            inp.pop("img_cond_orig", None)
 
-                # Get schedule
-                timesteps = get_schedule(
-                    num_inference_steps,
-                    inp["img"].shape[1],
-                    shift=(True),
-                )
+            # Encode additional conditioning images and concatenate
+            if len(images) > 1:
+                print_rank0(f"Multi-image input: encoding {len(images)} conditioning images")
+                for extra_idx, extra_image in enumerate(images[1:], start=2):
+                    extra_cond, extra_ids = self._encode_extra_image(
+                        extra_image, image_index=extra_idx, torch_device=torch_device
+                    )
+                    inp["img_cond_seq"] = torch.cat(
+                        (inp["img_cond_seq"], extra_cond), dim=1
+                    )
+                    inp["img_cond_seq_ids"] = torch.cat(
+                        (inp["img_cond_seq_ids"], extra_ids), dim=1
+                    )
 
-                # Denoise
-                x = denoise(
-                    self._model,
-                    **inp,
-                    timesteps=timesteps,
-                    guidance=guidance_scale,
-                )
+            # Offload TEs and AE, load transformer to GPU
+            if self._offload:
+                self._t5 = self._t5.cpu()
+                self._clip = self._clip.cpu()
+                self._ae = self._ae.cpu()
+                torch.cuda.empty_cache()
+                self._model = self._model.to(torch_device)
 
-                if self._offload:
-                    self._model = self._model.cpu()
-                    torch.cuda.empty_cache()
-                    self._ae = self._ae.to(torch_device)
+            # Get schedule
+            timesteps = get_schedule(
+                num_inference_steps,
+                inp["img"].shape[1],
+                shift=True,
+            )
 
-                # Decode
-                x = unpack(x.float(), height, width)
-                with torch.autocast(device_type=torch_device.type, dtype=torch.bfloat16):
-                    x = self._ae.decode(x)
+            # Denoise
+            x = denoise(
+                self._model,
+                **inp,
+                timesteps=timesteps,
+                guidance=guidance_scale,
+            )
 
-                if self._offload:
-                    self._ae = self._ae.cpu()
-                    torch.cuda.empty_cache()
+            # Offload transformer, load AE decoder to GPU
+            if self._offload:
+                self._model = self._model.cpu()
+                torch.cuda.empty_cache()
+                self._ae = self._ae.to(torch_device)
 
-                # Convert to PIL
-                x = x.clamp(-1, 1)
-                x = x[0].permute(1, 2, 0)
-                x = (127.5 * (x + 1.0)).cpu().byte().numpy()
-                result_image = Image.fromarray(x)
+            # Decode latents to pixel space
+            x = unpack(x.float(), height, width)
+            with torch.autocast(device_type=torch_device.type, dtype=torch.bfloat16):
+                x = self._ae.decode(x)
 
-                return [result_image]
+            if self._offload:
+                self._ae = self._ae.cpu()
+                torch.cuda.empty_cache()
 
-            finally:
-                # Clean up temp file
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
+            # Convert to PIL
+            x = x.clamp(-1, 1)
+            x = x[0].permute(1, 2, 0)
+            x = (127.5 * (x + 1.0)).cpu().byte().numpy()
+            result_image = Image.fromarray(x)
+
+            return [result_image]
 
         except Exception as e:
             print_rank0(f"Flux Kontext edit failed: {e}")
             import traceback
+
             traceback.print_exc()
             raise
+        finally:
+            # Clean up all temp files
+            for temp_path in temp_paths:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
     def cleanup(self) -> None:
         """Clean up resources."""
