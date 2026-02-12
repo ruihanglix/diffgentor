@@ -4,10 +4,10 @@ Emu3.5 is BAAI's autoregressive multimodal model supporting image generation and
 
 ## Prerequisites
 
-Initialize the submodule:
+Install with Emu3.5 dependencies:
 
 ```bash
-git submodule update --init diffgentor/models/third_party/emu35
+pip install "diffgentor[emu35]"
 ```
 
 **Required**: VisionTokenizer (VQ) model must be downloaded separately.

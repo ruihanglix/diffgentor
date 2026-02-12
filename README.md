@@ -22,15 +22,19 @@ Key features:
 pip install diffgentor
 ```
 
-**Option 2: From source with third-party models**
+Install with all optional backends:
 
 ```bash
-git clone --recursive https://github.com/ruihanglix/diffgentor.git
-cd diffgentor
-pip install -e .
+pip install "diffgentor[all]"
 ```
 
-> The `--recursive` flag initializes git submodules for third-party models (Step1X-Edit, BAGEL, Emu3.5, DreamOmni2, etc.)
+**Option 2: From source (for development)**
+
+```bash
+git clone https://github.com/ruihanglix/diffgentor.git
+cd diffgentor
+pip install -e ".[all]"
+```
 
 ### Download GenArena Dataset
 

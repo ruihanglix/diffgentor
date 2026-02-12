@@ -71,8 +71,8 @@ class Step1XBackend(BaseEditingBackend):
             sys.path.insert(0, str(third_party_path))
         else:
             raise ImportError(
-                f"Step1X-Edit submodule not found at {third_party_path}. "
-                "Run: git submodule update --init diffgentor/models/third_party/step1x_edit"
+                f"Step1X-Edit vendored code not found at {third_party_path}. "
+                "Please reinstall diffgentor: pip install diffgentor"
             )
 
         try:

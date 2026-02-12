@@ -12,7 +12,6 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
-from einops import rearrange, repeat
 from PIL import Image
 
 from diffgentor.backends.base import BaseEditingBackend
@@ -24,8 +23,7 @@ from diffgentor.utils.env import FluxKontextEnv
 class FluxKontextOfficialBackend(BaseEditingBackend):
     """Flux Kontext Official backend using BFL's official implementation.
 
-    Requires the flux1 submodule to be initialized:
-        git submodule update --init diffgentor/models/third_party/flux1
+    Uses vendored flux1 third-party code from diffgentor/models/third_party/flux1/.
 
     Model-specific parameters via environment variables:
         DG_FLUX_KONTEXT_OFFLOAD: Enable model offloading (default: false)
@@ -74,8 +72,8 @@ class FluxKontextOfficialBackend(BaseEditingBackend):
                 sys.path.insert(0, str(flux_src_path))
         else:
             raise ImportError(
-                f"Flux1 submodule not found at {third_party_path}. "
-                "Run: git submodule update --init diffgentor/models/third_party/flux1"
+                f"Flux1 vendored code not found at {third_party_path}. "
+                "Please reinstall diffgentor: pip install diffgentor"
             )
 
         try:
@@ -131,6 +129,7 @@ class FluxKontextOfficialBackend(BaseEditingBackend):
             Tuple of (img_cond_seq, img_cond_seq_ids) tensors ready to concatenate.
         """
         from flux.util import PREFERED_KONTEXT_RESOLUTIONS
+        from einops import rearrange, repeat
 
         img = image.convert("RGB")
         w_orig, h_orig = img.size

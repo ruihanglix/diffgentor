@@ -4,10 +4,10 @@ Step1X-Edit is an image editing model from UnifyModel. Diffgentor supports both 
 
 ## Prerequisites
 
-Initialize the submodule:
+Install with Step1X dependencies:
 
 ```bash
-git submodule update --init diffgentor/models/third_party/step1x_edit
+pip install "diffgentor[step1x]"
 ```
 
 ## Basic Usage
