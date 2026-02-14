@@ -85,8 +85,8 @@ class BagelBackend(BaseEditingBackend):
             sys.path.insert(0, str(third_party_path))
         else:
             raise ImportError(
-                f"BAGEL submodule not found at {third_party_path}. "
-                "Run: git submodule update --init diffgentor/models/third_party/bagel"
+                f"BAGEL vendored code not found at {third_party_path}. "
+                "Please reinstall diffgentor: pip install diffgentor"
             )
 
         try:

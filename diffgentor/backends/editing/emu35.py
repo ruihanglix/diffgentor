@@ -126,8 +126,8 @@ class Emu35Backend(BaseEditingBackend):
                 sys.path.insert(0, str(src_path))
         else:
             raise ImportError(
-                f"Emu3.5 submodule not found at {third_party_path}. "
-                "Run: git submodule update --init diffgentor/models/third_party/emu35"
+                f"Emu3.5 vendored code not found at {third_party_path}. "
+                "Please reinstall diffgentor: pip install diffgentor"
             )
 
         try:

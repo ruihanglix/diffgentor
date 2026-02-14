@@ -4,10 +4,10 @@ DreamOmni2 combines FLUX.1-Kontext with Qwen2.5-VL for instruction-understanding
 
 ## Prerequisites
 
-Initialize the submodule:
+Install with DreamOmni2 dependencies:
 
 ```bash
-git submodule update --init diffgentor/models/third_party/dreamomni2
+pip install "diffgentor[dreamomni2]"
 ```
 
 ## Basic Usage

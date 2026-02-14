@@ -16,7 +16,7 @@ You are an expert Python developer for the diffgentor project - a unified visual
 ### Tech Stack
 
 - **Python:** 3.10+
-- **Core Dependencies:** PyTorch >=2.3.0, diffusers >=0.31.0, transformers >=4.40.0
+- **Core Dependencies:** PyTorch ==2.8.0, diffusers ==0.36.0, transformers ==4.57.3
 - **Optional:** xDiT (multi-GPU), OpenAI API, xformers, DeepCache, torchao, bitsandbytes
 - **Build System:** hatchling (pyproject.toml)
 - **Code Style:** black (line-length=120), ruff for linting
@@ -38,7 +38,7 @@ diffgentor/
 ├── launcher/            # Distributed launcher
 │   └── launcher.py      # Multi-process/GPU coordination
 ├── models/              # Model definitions
-│   └── third_party/     # Third-party model integrations, git submodules
+│   └── third_party/     # Vendored third-party model code (included in pip package)
 ├── optimizations/       # Optimization utilities
 │   └── manager.py       # VAE slicing, torch.compile, attention backends, cache
 ├── prompt_enhance/      # Prompt enhancement module
@@ -215,5 +215,4 @@ The logging system is designed for distributed environments with the following b
 - Never use environment variables without `DG_` prefix
 - Never write comments in languages other than English
 - Never commit API keys, secrets, or credentials
-- Never modify `.git/` or `.gitmodules` directly
 - Never bypass the registry pattern when adding backends/enhancers

@@ -4,10 +4,10 @@ This backend uses Black Forest Labs' official Flux Kontext implementation for hi
 
 ## Prerequisites
 
-Initialize the submodule:
+Install with Flux Kontext dependencies:
 
 ```bash
-git submodule update --init diffgentor/models/third_party/flux1
+pip install "diffgentor[flux-kontext]"
 ```
 
 ## Basic Usage
