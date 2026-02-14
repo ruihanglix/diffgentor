@@ -19,14 +19,23 @@ Key features:
 **Option 1: pip install**
 
 ```bash
+# Core installation (diffusers, OpenAI, Google GenAI backends)
 pip install diffgentor
-```
 
-Install with all optional backends:
-
-```bash
+# Install with all optional backends
 pip install "diffgentor[all]"
 ```
+
+> **GPU users**: PyPI's default torch package is CPU-only. To use CUDA-enabled PyTorch, add the PyTorch index:
+> ```bash
+> pip install diffgentor --extra-index-url https://download.pytorch.org/whl/cu126
+> ```
+
+> **flash-attn**: The `flash-attn` optional dependency requires CUDA compilation. It is recommended to install a pre-built wheel manually:
+> ```bash
+> pip install flash-attn --no-build-isolation
+> ```
+> Or download a pre-built wheel from the [flash-attention releases](https://github.com/Dao-AILab/flash-attention/releases).
 
 **Option 2: From source (for development)**
 
