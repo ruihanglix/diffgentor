@@ -315,12 +315,60 @@ class DeepGenModel(nn.Module):
         if pretrained_pth is not None:
             self._load_pretrained(pretrained_pth)
 
+    @staticmethod
+    def _resolve_pretrained_path(pretrained_pth: str) -> str:
+        """Resolve pretrained path, downloading from HuggingFace Hub if needed.
+
+        If the path is a HuggingFace repo ID (e.g., "deepgenteam/DeepGen-1.0"),
+        downloads `model.pt` from the repo root and returns the local cached path.
+        Otherwise returns the path as-is.
+
+        Args:
+            pretrained_pth: Local file path or HuggingFace repo ID.
+
+        Returns:
+            Resolved local file path to the checkpoint.
+        """
+        import os
+
+        # If it's already a local file, return as-is
+        if os.path.exists(pretrained_pth):
+            return pretrained_pth
+
+        # Check if it looks like a HuggingFace repo ID (org/model format)
+        # Not a local path (no path separators at start, no file extension like .pt/.safetensors)
+        parts = pretrained_pth.split("/")
+        is_hf_repo = (
+            len(parts) == 2
+            and not pretrained_pth.startswith(("/", ".", "~"))
+            and not pretrained_pth.endswith((".pt", ".safetensors"))
+        )
+
+        if is_hf_repo:
+            from huggingface_hub import hf_hub_download
+
+            print(f"Detected HuggingFace repo ID: {pretrained_pth}, downloading model.pt ...")
+            local_path = hf_hub_download(repo_id=pretrained_pth, filename="model.pt")
+            print(f"Downloaded checkpoint to: {local_path}")
+            return local_path
+
+        return pretrained_pth
+
     def _load_pretrained(self, pretrained_pth: str):
         """Load pretrained weights.
+
+        Supports loading from:
+        - Local `.pt` file path
+        - Local `.safetensors` file path
+        - HuggingFace repo ID (e.g., "deepgenteam/DeepGen-1.0"), which downloads
+          `model.pt` from the repo root automatically.
 
         If debug_checkpoint is enabled (DG_DEEPGEN_DEBUG_CHECKPOINT=1),
         writes detailed checkpoint loading info to {log_dir}/checkpoint_debug.log
         """
+        # Resolve HuggingFace repo ID to local path if needed
+        pretrained_pth = self._resolve_pretrained_path(pretrained_pth)
+
         if pretrained_pth.endswith(".pt"):
             state_dict = torch.load(pretrained_pth, map_location="cpu")
         else:
