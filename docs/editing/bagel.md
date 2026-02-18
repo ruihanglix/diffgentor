@@ -4,16 +4,10 @@ BAGEL is ByteDance's multimodal model supporting both image understanding and ge
 
 ## Prerequisites
 
-Initialize the submodule:
+Install with BAGEL dependencies:
 
 ```bash
-git submodule update --init diffgentor/models/third_party/bagel
-```
-
-Install additional dependencies:
-
-```bash
-pip install -e ".[bagel]"
+pip install "diffgentor[bagel]"
 ```
 
 ## Basic Usage

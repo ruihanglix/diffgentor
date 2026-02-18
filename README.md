@@ -19,18 +19,31 @@ Key features:
 **Option 1: pip install**
 
 ```bash
+# Core installation (diffusers, OpenAI, Google GenAI backends)
 pip install diffgentor
+
+# Install with all optional backends
+pip install "diffgentor[all]"
 ```
 
-**Option 2: From source with third-party models**
+> **GPU users**: PyPI's default torch package is CPU-only. To use CUDA-enabled PyTorch, add the PyTorch index:
+> ```bash
+> pip install diffgentor --extra-index-url https://download.pytorch.org/whl/cu126
+> ```
+
+> **flash-attn**: The `flash-attn` optional dependency requires CUDA compilation. It is recommended to install a pre-built wheel manually:
+> ```bash
+> pip install flash-attn --no-build-isolation
+> ```
+> Or download a pre-built wheel from the [flash-attention releases](https://github.com/Dao-AILab/flash-attention/releases).
+
+**Option 2: From source (for development)**
 
 ```bash
-git clone --recursive https://github.com/ruihanglix/diffgentor.git
+git clone https://github.com/ruihanglix/diffgentor.git
 cd diffgentor
-pip install -e .
+pip install -e ".[all]"
 ```
-
-> The `--recursive` flag initializes git submodules for third-party models (Step1X-Edit, BAGEL, Emu3.5, DreamOmni2, etc.)
 
 ### Download GenArena Dataset
 

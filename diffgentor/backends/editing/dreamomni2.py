@@ -81,8 +81,8 @@ class DreamOmni2Backend(BaseEditingBackend):
             sys.path.insert(0, str(third_party_path))
         else:
             raise ImportError(
-                f"DreamOmni2 submodule not found at {third_party_path}. "
-                "Run: git submodule update --init diffgentor/models/third_party/dreamomni2"
+                f"DreamOmni2 vendored code not found at {third_party_path}. "
+                "Please reinstall diffgentor: pip install diffgentor"
             )
 
         try:
