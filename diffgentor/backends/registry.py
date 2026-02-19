@@ -65,7 +65,11 @@ def get_backend(
         from diffgentor.backends.t2i.google_genai_backend import GoogleGenAIBackend
 
         return GoogleGenAIBackend(backend_config, optimization_config)
+    elif backend_name == "deepgen":
+        from diffgentor.backends.t2i.deepgen import DeepGenT2IBackend
+
+        return DeepGenT2IBackend(backend_config, optimization_config)
     else:
         if backend_name in BACKEND_REGISTRY:
             return BACKEND_REGISTRY[backend_name](backend_config, optimization_config)
-        raise ValueError(f"Unknown backend: {backend_name}. Available: diffusers, xdit, openai, google_genai")
+        raise ValueError(f"Unknown backend: {backend_name}. Available: diffusers, xdit, openai, google_genai, deepgen")

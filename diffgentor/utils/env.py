@@ -38,7 +38,7 @@ Where {PREFIX} is OPENAI or GEMINI.
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -452,3 +452,177 @@ class HunyuanImage3Env(ModelEnvConfig):
             Number of GPUs per model, 0 means use all visible GPUs
         """
         return get_env_int("HUNYUAN_IMAGE_3_GPUS_PER_MODEL", 0)
+
+
+@dataclass
+class DeepGenEnv(ModelEnvConfig):
+    """DeepGen model environment variables.
+
+    DeepGen is a unified visual generation model based on AR (Qwen2.5-VL) + Diffusion (SD3.5),
+    supporting both text-to-image generation and image editing.
+
+    Configuration is loaded from a Python config file specified by DG_DEEPGEN_CONFIG.
+    Model paths can be overridden via environment variables.
+
+    CLI parameters (common across backends):
+        --model_name: Path to model checkpoint (.safetensors or .pt file)
+        --guidance_scale: CFG guidance scale (default: 4.0)
+        --num_inference_steps: Number of inference steps
+        --height: Output image height
+        --width: Output image width
+        --negative_prompt: Negative prompt for CFG
+
+    Environment variables:
+        DG_DEEPGEN_CONFIG: Config file name (default: "deepgen")
+        DG_DEEPGEN_DIFFUSION_MODEL_PATH: Override diffusion model path (SD3.5)
+        DG_DEEPGEN_AR_MODEL_PATH: Override AR model path (Qwen2.5-VL)
+        DG_DEEPGEN_MAX_LENGTH: Maximum sequence length (default: 1024)
+        DG_DEEPGEN_GPUS_PER_MODEL: Number of GPUs per model instance (default: 1)
+        DG_DEEPGEN_DEBUG_CHECKPOINT: Enable checkpoint loading debug log (default: 0)
+        DG_DEEPGEN_IMAGE_RESIZE_MODE: Image resize mode (default: "fix_pixels")
+            Options: "fix_pixels", "dynamic", "direct"
+            - fix_pixels: Keep total pixel count constant (ratio = image_size / sqrt(h*w)),
+                          align dimensions to 32. Good for maintaining image quality.
+            - dynamic: Keep aspect ratio, limit max edge to image_size, align to 32.
+                       Good for preserving aspect ratio.
+            - direct: Force resize to exact --height x --width from CLI.
+                      Requires --height and --width to be specified.
+
+    Multi-GPU Usage:
+        The Launcher automatically handles GPU assignment based on DG_DEEPGEN_GPUS_PER_MODEL.
+        Each model instance runs on its assigned GPU(s).
+
+        Examples:
+            # 8 model instances, each on 1 GPU (8 GPUs total)
+            CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 DG_DEEPGEN_GPUS_PER_MODEL=1 \\
+                diffgentor edit --backend deepgen --num_gpus 8 ...
+            # Instance 0: GPU 0 | Instance 1: GPU 1 | ... | Instance 7: GPU 7
+    """
+
+    _prefix: str = field(default="DEEPGEN", repr=False)
+    _gpus_per_model: int = field(default=1, repr=False)
+    config_name: str = "deepgen"
+    diffusion_model_path: Optional[str] = None
+    ar_model_path: Optional[str] = None
+    max_length: int = 1024
+    debug_checkpoint: bool = False
+    image_resize_mode: str = "fix_pixels"
+
+    # Loaded from config file (internal)
+    _config: Dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def load(cls) -> "DeepGenEnv":
+        """Load DeepGen environment configuration.
+
+        Loads config file specified by DG_DEEPGEN_CONFIG (default: "deepgen") and applies
+        environment variable overrides for model paths.
+
+        Returns:
+            DeepGenEnv instance with loaded configuration
+        """
+        config_name = get_env_str("DEEPGEN_CONFIG", "deepgen")
+
+        env = cls(
+            _gpus_per_model=get_env_int("DEEPGEN_GPUS_PER_MODEL", 1),
+            config_name=config_name,
+            diffusion_model_path=get_env_str("DEEPGEN_DIFFUSION_MODEL_PATH"),
+            ar_model_path=get_env_str("DEEPGEN_AR_MODEL_PATH"),
+            max_length=get_env_int("DEEPGEN_MAX_LENGTH", 1024),
+            debug_checkpoint=get_env_bool("DEEPGEN_DEBUG_CHECKPOINT", False),
+            image_resize_mode=get_env_str("DEEPGEN_IMAGE_RESIZE_MODE", "fix_pixels"),
+        )
+
+        # Load config file
+        from diffgentor.models.deepgen.config import load_deepgen_config
+
+        env._config = load_deepgen_config(config_name)
+
+        return env
+
+    @staticmethod
+    def gpus_per_model() -> int:
+        """Get number of GPUs per model instance from environment.
+
+        Used by Launcher to determine launch strategy.
+
+        Returns:
+            Number of GPUs per model (default: 1)
+        """
+        return get_env_int("DEEPGEN_GPUS_PER_MODEL", 1)
+
+    @property
+    def model_config(self) -> Dict[str, Any]:
+        """Get model configuration dict from config file."""
+        return self._config.get("model", {})
+
+    @property
+    def tokenizer_config(self) -> Dict[str, Any]:
+        """Get tokenizer configuration dict from config file."""
+        return self._config.get("tokenizer", {})
+
+    @property
+    def prompt_template(self) -> Dict[str, Any]:
+        """Get prompt template dict from config file."""
+        return self._config.get("prompt_template", {})
+
+    @property
+    def connector_config(self) -> Dict[str, Any]:
+        """Get connector configuration from model config."""
+        return self.model_config.get("connector", {})
+
+    # Convenience properties for common config values
+    @property
+    def num_queries(self) -> int:
+        """Get number of query tokens."""
+        return self.model_config.get("num_queries", 128)
+
+    @property
+    def connector_hidden_size(self) -> int:
+        """Get connector hidden size."""
+        return self.connector_config.get("hidden_size", 2048)
+
+    @property
+    def connector_intermediate_size(self) -> int:
+        """Get connector intermediate size."""
+        return self.connector_config.get("intermediate_size", 11946)
+
+    @property
+    def connector_num_layers(self) -> int:
+        """Get number of connector layers."""
+        return self.connector_config.get("num_hidden_layers", 6)
+
+    @property
+    def connector_num_heads(self) -> int:
+        """Get number of connector attention heads."""
+        return self.connector_config.get("num_attention_heads", 32)
+
+    @property
+    def connector_attn_impl(self) -> str:
+        """Get connector attention implementation."""
+        return self.connector_config.get("_attn_implementation", "flash_attention_2")
+
+    @property
+    def freeze_lmm(self) -> bool:
+        """Get whether to freeze LMM."""
+        return self.model_config.get("freeze_lmm", True)
+
+    @property
+    def freeze_transformer(self) -> bool:
+        """Get whether to freeze transformer."""
+        return self.model_config.get("freeze_transformer", True)
+
+    @property
+    def lora_rank(self) -> int:
+        """Get LoRA rank."""
+        return self.model_config.get("lora_rank", 64)
+
+    @property
+    def lora_alpha(self) -> int:
+        """Get LoRA alpha."""
+        return self.model_config.get("lora_alpha", 128)
+
+    @property
+    def use_activation_checkpointing(self) -> bool:
+        """Get whether to use activation checkpointing."""
+        return self.model_config.get("use_activation_checkpointing", False)

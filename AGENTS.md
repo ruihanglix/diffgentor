@@ -75,6 +75,7 @@ temp/                    # Temporary files, experiments (git-ignored mostly)
 | `dreamomni2` | Editing | DreamOmni2 (FLUX.1-Kontext + Qwen2.5-VL) |
 | `flux_kontext_official` | Editing | BFL official Flux Kontext |
 | `hunyuan_image_3` | Editing | Tencent HunyuanImage-3.0-Instruct with CoT reasoning |
+| `deepgen` | T2I / Editing | DeepGen unified model (Qwen2.5-VL + SD3.5) |
 
 ## Commands You Can Use
 
@@ -158,6 +159,11 @@ Examples:
 - `DG_XDIT_RING_DEGREE=2`
 - `DG_HUNYUAN_IMAGE_3_MOE_IMPL=flashinfer`
 - `DG_HUNYUAN_IMAGE_3_GPUS_PER_MODEL=4`
+- `DG_DEEPGEN_GPUS_PER_MODEL=1`
+- `DG_DEEPGEN_DIFFUSION_MODEL_PATH=/path/to/sd3.5`
+- `DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl`
+- `DG_DEEPGEN_IMAGE_RESIZE_MODE=fix_pixels`
+- `DG_DEEPGEN_DEBUG_CHECKPOINT=1`
 
 ### CLI Arguments vs Environment Variables
 
