@@ -39,7 +39,8 @@ diffgentor/
 │   ├── __init__.py
 │   ├── app.py           # FastAPI app, model lifecycle, uvicorn launch
 │   ├── schemas.py       # Pydantic request/response models (OpenAI Images API)
-│   └── routes.py        # Route handlers (/v1/images/generations, /v1/images/edits, /v1/models)
+│   ├── routes.py        # Route handlers (/v1/images/generations, /v1/images/edits, /v1/models)
+│   └── worker_pool.py   # Multi-GPU worker pools (InProcessPool, SubprocessPool)
 ├── launcher/            # Distributed launcher
 │   └── launcher.py      # Multi-process/GPU coordination
 ├── models/              # Model definitions
@@ -104,6 +105,13 @@ diffgentor serve --mode t2i --backend diffusers --model_name black-forest-labs/F
 # Start OpenAI-compatible API server (editing mode)
 diffgentor serve --mode edit --backend diffusers --model_name Qwen/Qwen-Image-Edit-2511 --model_type qwen --port 8000
 
+# Multi-GPU serve (4 replicas on 4 GPUs)
+CUDA_VISIBLE_DEVICES=0,1,2,3 diffgentor serve --mode t2i --backend diffusers --model_name black-forest-labs/FLUX.1-schnell --num_gpus 4
+
+# Multi-GPU serve with model sharding (2 replicas, each on 4 GPUs)
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 DG_HUNYUAN_IMAGE_3_GPUS_PER_MODEL=4 \
+    diffgentor serve --mode edit --backend hunyuan_image_3 --model_name ./HunyuanImage-3-Instruct-Distil --num_gpus 8
+
 # Lint code
 ruff check diffgentor/
 black --check diffgentor/
@@ -147,6 +155,11 @@ from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 result = client.images.generate(prompt="A cat", model="FLUX.1-dev", n=1, size="1024x1024")
 ```
+
+**Multi-GPU serving:**
+- `--num_gpus N`: Load N replicas across N GPUs (data parallelism, 1 GPU per model)
+- For models needing multiple GPUs per instance (emu35, hunyuan_image_3), set `DG_*_GPUS_PER_MODEL` and the server spawns subprocess workers with isolated `CUDA_VISIBLE_DEVICES`
+- See `docs/serve.md` for details
 
 **Serve-specific environment variables:**
 - `DG_SERVE_NUM_INFERENCE_STEPS` — Override num_inference_steps for all requests

@@ -11,7 +11,7 @@ import base64
 import io
 import logging
 import time
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image
@@ -26,6 +26,9 @@ from diffgentor.serve.schemas import (
     ModelObject,
 )
 
+if TYPE_CHECKING:
+    from diffgentor.serve.worker_pool import WorkerPool
+
 logger = logging.getLogger("diffgentor.serve")
 
 router = APIRouter()
@@ -35,6 +38,8 @@ _t2i_backend = None
 _editing_backend = None
 _model_name: str = ""
 _gpu_semaphore: Optional[asyncio.Semaphore] = None
+_worker_pool: Optional["WorkerPool"] = None
+_serve_mode: Optional[str] = None
 
 
 def configure(
@@ -43,16 +48,20 @@ def configure(
     editing_backend=None,
     model_name: str = "",
     max_concurrent: int = 1,
+    worker_pool: Optional["WorkerPool"] = None,
+    mode: str = "t2i",
 ) -> None:
     """Inject backend instances and settings into the router.
 
     Called once by app.py after the model has been loaded.
     """
-    global _t2i_backend, _editing_backend, _model_name, _gpu_semaphore
+    global _t2i_backend, _editing_backend, _model_name, _gpu_semaphore, _worker_pool, _serve_mode
     _t2i_backend = t2i_backend
     _editing_backend = editing_backend
     _model_name = model_name
     _gpu_semaphore = asyncio.Semaphore(max_concurrent)
+    _worker_pool = worker_pool
+    _serve_mode = mode
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +96,32 @@ async def _read_upload_as_pil(upload: UploadFile) -> Image.Image:
     return Image.open(io.BytesIO(data)).convert("RGB")
 
 
+def _build_inference_kwargs(
+    width: Optional[int] = None,
+    height: Optional[int] = None,
+    quality: Optional[str] = None,
+) -> dict:
+    """Build common inference kwargs including env-var overrides."""
+    kwargs: dict = {}
+    if width is not None:
+        kwargs["width"] = width
+    if height is not None:
+        kwargs["height"] = height
+    if quality is not None:
+        kwargs["quality"] = quality
+
+    from diffgentor.utils.env import get_env_float, get_env_int
+
+    steps = get_env_int("SERVE_NUM_INFERENCE_STEPS", 0)
+    if steps > 0:
+        kwargs["num_inference_steps"] = steps
+    cfg = get_env_float("SERVE_GUIDANCE_SCALE", 0.0)
+    if cfg > 0:
+        kwargs["guidance_scale"] = cfg
+
+    return kwargs
+
+
 # ---------------------------------------------------------------------------
 # POST /v1/images/generations
 # ---------------------------------------------------------------------------
@@ -94,7 +129,7 @@ async def _read_upload_as_pil(upload: UploadFile) -> Image.Image:
 
 @router.post("/v1/images/generations", response_model=ImagesResponse)
 async def generate_images(req: ImageGenerateRequest):
-    if _t2i_backend is None:
+    if _t2i_backend is None and not (_worker_pool and _serve_mode == "t2i"):
         raise HTTPException(
             status_code=400,
             detail="This server is not configured for image generation (T2I). "
@@ -105,32 +140,20 @@ async def generate_images(req: ImageGenerateRequest):
     n = max(req.n or 1, 1)
     output_format = (req.output_format or "png").lower()
 
-    kwargs: dict = {}
-    if width is not None:
-        kwargs["width"] = width
-    if height is not None:
-        kwargs["height"] = height
-    if req.quality is not None:
-        kwargs["quality"] = req.quality
-
-    from diffgentor.utils.env import get_env_int, get_env_float
-
-    steps = get_env_int("SERVE_NUM_INFERENCE_STEPS", 0)
-    if steps > 0:
-        kwargs["num_inference_steps"] = steps
-    cfg = get_env_float("SERVE_GUIDANCE_SCALE", 0.0)
-    if cfg > 0:
-        kwargs["guidance_scale"] = cfg
+    kwargs = _build_inference_kwargs(width, height, req.quality)
 
     try:
         all_images: List[Image.Image] = []
         for _ in range(n):
-            async with _gpu_semaphore:
-                images = await asyncio.to_thread(
-                    _t2i_backend.generate,
-                    req.prompt,
-                    **kwargs,
-                )
+            if _worker_pool is not None:
+                images = await _worker_pool.submit_generate(req.prompt, **kwargs)
+            else:
+                async with _gpu_semaphore:
+                    images = await asyncio.to_thread(
+                        _t2i_backend.generate,
+                        req.prompt,
+                        **kwargs,
+                    )
             all_images.extend(images)
 
         data = [ImageData(b64_json=_pil_to_b64(img, output_format)) for img in all_images]
@@ -158,7 +181,7 @@ async def edit_images(
     output_format: Optional[str] = Form("png"),
     mask: Optional[UploadFile] = File(None),
 ):
-    if _editing_backend is None:
+    if _editing_backend is None and not (_worker_pool and _serve_mode == "edit"):
         raise HTTPException(
             status_code=400,
             detail="This server is not configured for image editing. "
@@ -172,36 +195,23 @@ async def edit_images(
     for upload in image:
         pil_images.append(await _read_upload_as_pil(upload))
 
-    kwargs: dict = {}
-    if quality is not None:
-        kwargs["quality"] = quality
-
     width, height = _parse_size(size)
-    if width is not None:
-        kwargs["width"] = width
-    if height is not None:
-        kwargs["height"] = height
-
-    from diffgentor.utils.env import get_env_int, get_env_float
-
-    steps = get_env_int("SERVE_NUM_INFERENCE_STEPS", 0)
-    if steps > 0:
-        kwargs["num_inference_steps"] = steps
-    cfg = get_env_float("SERVE_GUIDANCE_SCALE", 0.0)
-    if cfg > 0:
-        kwargs["guidance_scale"] = cfg
+    kwargs = _build_inference_kwargs(width, height, quality)
 
     try:
         all_images: List[Image.Image] = []
         input_imgs = pil_images if len(pil_images) > 1 else pil_images[0]
         for _ in range(n):
-            async with _gpu_semaphore:
-                edited = await asyncio.to_thread(
-                    _editing_backend.edit,
-                    input_imgs,
-                    prompt,
-                    **kwargs,
-                )
+            if _worker_pool is not None:
+                edited = await _worker_pool.submit_edit(input_imgs, prompt, **kwargs)
+            else:
+                async with _gpu_semaphore:
+                    edited = await asyncio.to_thread(
+                        _editing_backend.edit,
+                        input_imgs,
+                        prompt,
+                        **kwargs,
+                    )
             all_images.extend(edited)
 
         data = [ImageData(b64_json=_pil_to_b64(img, out_fmt)) for img in all_images]

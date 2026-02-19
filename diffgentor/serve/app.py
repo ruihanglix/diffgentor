@@ -60,6 +60,26 @@ def _load_editing_backend(
     return backend
 
 
+def _detect_num_gpus(args: Namespace) -> int:
+    """Resolve the effective number of GPUs to use."""
+    import os
+
+    num_gpus = getattr(args, "num_gpus", None)
+    if num_gpus is not None:
+        return num_gpus
+
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if cuda_visible:
+        return len([g for g in cuda_visible.split(",") if g.strip()])
+
+    try:
+        import torch
+        count = torch.cuda.device_count()
+        return max(count, 1)
+    except (ImportError, Exception):
+        return 1
+
+
 def run_serve(args: Namespace) -> int:
     """Start the OpenAI-compatible API server.
 
@@ -86,24 +106,41 @@ def run_serve(args: Namespace) -> int:
 
     backend_config = _build_backend_config(args)
     opt_config = _build_optimization_config(args)
+    num_gpus = _detect_num_gpus(args)
 
     # ------------------------------------------------------------------
-    # Load backend(s)
+    # Try to create a multi-GPU worker pool
     # ------------------------------------------------------------------
+    from diffgentor.serve.worker_pool import (
+        InProcessPool,
+        SubprocessPool,
+        WorkerPool,
+        create_worker_pool,
+    )
+
+    pool: Optional[WorkerPool] = None
     t2i_backend: Optional[BaseBackend] = None
     editing_backend: Optional[BaseEditingBackend] = None
 
-    if mode == "t2i":
-        logger.info("Loading T2I backend: %s / %s", backend_config.backend, backend_config.model_name)
-        t2i_backend = _load_t2i_backend(backend_config, opt_config)
-        logger.info("T2I backend loaded successfully")
-    elif mode == "edit":
-        logger.info("Loading editing backend: %s / %s", backend_config.backend, backend_config.model_name)
-        editing_backend = _load_editing_backend(backend_config, opt_config)
-        logger.info("Editing backend loaded successfully")
+    if num_gpus > 1:
+        logger.info("Attempting multi-GPU pool with %d GPUs ...", num_gpus)
+        pool = create_worker_pool(mode, backend_config, opt_config, num_gpus)
+
+    if pool is not None:
+        logger.info("Multi-GPU worker pool created (%d workers)", pool._num_workers)
     else:
-        print(f"ERROR: unknown mode '{mode}'. Use 't2i' or 'edit'.")
-        return 1
+        # Fallback: single-backend path
+        if mode == "t2i":
+            logger.info("Loading T2I backend: %s / %s", backend_config.backend, backend_config.model_name)
+            t2i_backend = _load_t2i_backend(backend_config, opt_config)
+            logger.info("T2I backend loaded successfully")
+        elif mode == "edit":
+            logger.info("Loading editing backend: %s / %s", backend_config.backend, backend_config.model_name)
+            editing_backend = _load_editing_backend(backend_config, opt_config)
+            logger.info("Editing backend loaded successfully")
+        else:
+            print(f"ERROR: unknown mode '{mode}'. Use 't2i' or 'edit'.")
+            return 1
 
     # ------------------------------------------------------------------
     # Create FastAPI app & wire routes
@@ -115,6 +152,8 @@ def run_serve(args: Namespace) -> int:
         editing_backend=editing_backend,
         model_name=backend_config.model_name,
         max_concurrent=max_concurrent,
+        worker_pool=pool,
+        mode=mode,
     )
 
     app = fastapi.FastAPI(
@@ -123,17 +162,35 @@ def run_serve(args: Namespace) -> int:
     )
     app.include_router(router)
 
+    # Start async worker tasks after the event loop is available
+    @app.on_event("startup")
+    async def _start_pool_workers() -> None:
+        if pool is not None:
+            if isinstance(pool, InProcessPool):
+                pool.start_workers()
+            elif isinstance(pool, SubprocessPool):
+                pool.start_reader()
+
+    @app.on_event("shutdown")
+    async def _shutdown_pool() -> None:
+        if pool is not None:
+            await pool.shutdown()
+
     # ------------------------------------------------------------------
     # Launch uvicorn
     # ------------------------------------------------------------------
-    print(f"Starting server on {host}:{port}  (mode={mode}, model={backend_config.model_name})")
-    print(f"  POST /v1/images/generations  {'[enabled]' if t2i_backend else '[disabled]'}")
-    print(f"  POST /v1/images/edits        {'[enabled]' if editing_backend else '[disabled]'}")
+    if pool is not None:
+        print(f"Starting server on {host}:{port}  (mode={mode}, model={backend_config.model_name}, "
+              f"workers={pool._num_workers})")
+    else:
+        print(f"Starting server on {host}:{port}  (mode={mode}, model={backend_config.model_name})")
+    print(f"  POST /v1/images/generations  {'[enabled]' if (t2i_backend or (pool and mode == 't2i')) else '[disabled]'}")
+    print(f"  POST /v1/images/edits        {'[enabled]' if (editing_backend or (pool and mode == 'edit')) else '[disabled]'}")
     print(f"  GET  /v1/models              [enabled]")
 
     uvicorn.run(app, host=host, port=port, log_level="info")
 
-    # Cleanup on shutdown
+    # Cleanup on shutdown (single-backend path)
     if t2i_backend is not None:
         t2i_backend.cleanup()
     if editing_backend is not None:

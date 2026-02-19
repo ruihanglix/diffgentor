@@ -320,7 +320,72 @@ diffgentor serve --mode t2i \
     --port 8000
 ```
 
+## Multi-GPU Serving
+
+When multiple GPUs are available the server can load multiple model replicas and distribute incoming requests across them for higher throughput. The strategy depends on how many GPUs each model instance needs.
+
+### Data Parallelism (1 GPU per model)
+
+For models that fit on a single GPU (most diffusers models), the server loads N replicas in-process, each pinned to a different `cuda:i` device. Requests are dispatched round-robin via an `asyncio.Queue`.
+
+```bash
+# 4 GPUs -> 4 replicas, 4x throughput
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+diffgentor serve --mode t2i \
+    --backend diffusers \
+    --model_name black-forest-labs/FLUX.1-schnell \
+    --num_gpus 4
+```
+
+### Model Sharding (multiple GPUs per model)
+
+Some large models use `device_map="auto"` to shard across multiple GPUs (e.g. HunyuanImage-3.0, Emu3.5). The server spawns separate worker subprocesses, each with its own `CUDA_VISIBLE_DEVICES` slice so that `device_map="auto"` distributes within each worker's visible GPUs.
+
+```bash
+# HunyuanImage-3.0: 4 GPUs per model, 8 GPUs total -> 2 replicas
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+DG_HUNYUAN_IMAGE_3_GPUS_PER_MODEL=4 \
+diffgentor serve --mode edit \
+    --backend hunyuan_image_3 \
+    --model_name ./HunyuanImage-3-Instruct-Distil \
+    --num_gpus 8
+```
+
+```bash
+# Emu3.5: 2 GPUs per model, 8 GPUs total -> 4 replicas
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+DG_EMU35_GPUS_PER_MODEL=2 \
+DG_EMU35_VQ_PATH=/path/to/vq \
+diffgentor serve --mode edit \
+    --backend emu35 \
+    --model_name /path/to/emu35 \
+    --num_gpus 8
+```
+
+### How it works
+
+The pool type is selected automatically:
+
+| `gpus_per_model` | Pool type | Mechanism |
+|-------------------|-----------|-----------|
+| 1 (or unset) | `InProcessPool` | N replicas loaded in-process on `cuda:0..N-1` |
+| >1 | `SubprocessPool` | N child processes, each with isolated `CUDA_VISIBLE_DEVICES` |
+| 0 (all GPUs) | No pool | Single model using all GPUs via `device_map="auto"` |
+
+The `gpus_per_model` value is read from backend-specific environment variables:
+
+| Backend | Environment variable | Default |
+|---------|---------------------|---------|
+| `emu35` | `DG_EMU35_GPUS_PER_MODEL` | `0` (all GPUs) |
+| `hunyuan_image_3` | `DG_HUNYUAN_IMAGE_3_GPUS_PER_MODEL` | `0` (all GPUs) |
+| `deepgen` | `DG_DEEPGEN_GPUS_PER_MODEL` | `1` |
+| all others | — | `1` |
+
+When `--num_gpus` is not specified, the server auto-detects from `CUDA_VISIBLE_DEVICES` or `torch.cuda.device_count()`. If only 1 GPU is available (or `gpus_per_model=0`), no pool is created and the server falls back to single-model behavior.
+
 ## Architecture
+
+### Single-GPU (default)
 
 ```
                          ┌─────────────────────────────┐
@@ -337,12 +402,41 @@ diffgentor serve --mode t2i \
 
 The server loads the model once at startup and keeps it resident in GPU memory. Incoming requests are handled asynchronously by FastAPI; actual inference is dispatched to a thread via `asyncio.to_thread()` so the event loop stays responsive. A semaphore (controlled by `--max_concurrent`) prevents overloading GPU memory with too many parallel inference calls.
 
+### Multi-GPU with InProcessPool
+
+```
+                         ┌──────────────────────────────────────┐
+  HTTP Client ──────────►│   FastAPI  (uvicorn)                 │
+                         │            │                         │
+                         │      asyncio.Queue                   │
+                         │       ┌────┴────┐                    │
+                         │  Worker 0   Worker 1   Worker 2 ...  │
+                         │  (cuda:0)   (cuda:1)   (cuda:2)      │
+                         │  Backend    Backend    Backend        │
+                         └──────────────────────────────────────┘
+```
+
+### Multi-GPU with SubprocessPool
+
+```
+  HTTP Client ──────────► FastAPI (main process)
+                              │
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+          Subprocess 0   Subprocess 1   Subprocess 2
+          GPU 0,1        GPU 2,3        GPU 4,5
+          Backend        Backend        Backend
+          (device_map=   (device_map=   (device_map=
+           "auto")        "auto")        "auto")
+```
+
 ## Limitations
 
 - **Single model**: The server loads exactly one model. To serve multiple models, run multiple server instances on different ports.
 - **No streaming**: Image streaming (`stream=True`) is not yet supported. The full image is returned once generation completes.
 - **No URL response**: Only `b64_json` response format is supported. The `url` format (which requires file hosting) is not implemented.
 - **No authentication**: The server does not validate API keys. Use a reverse proxy if you need authentication in production.
+- **xDiT not supported**: The xDiT backend requires `torchrun` and is not compatible with the serve mode.
 
 ## Comparison with Batch Mode
 
@@ -350,6 +444,6 @@ The server loads the model once at startup and keeps it resident in GPU memory. 
 |---------|------------------------|-------|
 | Input | File (CSV, JSONL, prompts file) | HTTP request |
 | Output | Files on disk | JSON response (base64) |
-| Concurrency | Multi-GPU / multi-process | Single model, async requests |
+| Concurrency | Multi-GPU / multi-process | Multi-GPU worker pool or single model |
 | Use case | Large-scale data synthesis | Interactive / API integration |
 | Resume support | Yes (`--resume`) | N/A (stateless) |

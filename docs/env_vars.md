@@ -103,6 +103,8 @@ diffgentor edit --backend flux_kontext_official --model_name /path/to/flux --inp
 | `DG_SERVE_NUM_INFERENCE_STEPS` | int | model default | Override denoising steps for all requests |
 | `DG_SERVE_GUIDANCE_SCALE` | float | model default | Override guidance scale for all requests |
 
+Multi-GPU serving also uses backend-specific `DG_*_GPUS_PER_MODEL` variables (see each backend section) to determine how many GPUs each model replica requires. The server automatically selects an in-process pool (1 GPU/model) or subprocess pool (>1 GPU/model).
+
 ```bash
 DG_SERVE_NUM_INFERENCE_STEPS=28 \
 DG_SERVE_GUIDANCE_SCALE=3.5 \
