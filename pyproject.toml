@@ -44,8 +44,9 @@ bagel = ["safetensors", "opencv-python-headless", "sentencepiece==0.2.1", "einop
 emu35 = ["omegaconf", "tiktoken", "einops"]
 dreamomni2 = ["protobuf", "peft"]
 flux-kontext = ["einops", "opencv-python-headless", "safetensors"]
+serve = ["fastapi", "uvicorn[standard]", "python-multipart"]
 all = [
-    "diffgentor[xdit,openai,xformers,deepcache,cache-dit,para-attn,quantization,google-genai,step1x,bagel,emu35,dreamomni2,flux-kontext]",
+    "diffgentor[xdit,openai,xformers,deepcache,cache-dit,para-attn,quantization,google-genai,step1x,bagel,emu35,dreamomni2,flux-kontext,serve]",
 ]
 dev = ["pytest", "black", "ruff", "mypy"]
 

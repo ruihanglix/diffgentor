@@ -71,6 +71,14 @@ Examples:
     )
     _add_edit_arguments(edit_parser)
 
+    # Serve subcommand
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Start an OpenAI-compatible API server",
+        formatter_class=RequiredFirstHelpFormatter,
+    )
+    _add_serve_arguments(serve_parser)
+
     return parser
 
 
@@ -438,6 +446,43 @@ def _add_edit_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         choices=["qwen_image_edit", "glm_image", "flux2"],
         help="Type of prompt enhancement to use (API config via DG_PROMPT_ENHANCER_* env vars)",
+    )
+
+
+def _add_serve_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add serve-mode specific arguments.
+
+    Args:
+        parser: Argument parser to add arguments to
+    """
+    _add_common_arguments(parser)
+
+    # Server options
+    server_group = parser.add_argument_group("Server Options")
+    server_group.add_argument(
+        "--mode",
+        type=str,
+        required=True,
+        choices=["t2i", "edit"],
+        help="Serving mode: 't2i' for image generation, 'edit' for image editing",
+    )
+    server_group.add_argument(
+        "--host",
+        type=str,
+        default="0.0.0.0",
+        help="Host to bind the server to",
+    )
+    server_group.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to listen on",
+    )
+    server_group.add_argument(
+        "--max_concurrent",
+        type=int,
+        default=1,
+        help="Maximum number of concurrent inference requests",
     )
 
 

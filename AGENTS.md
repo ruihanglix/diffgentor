@@ -17,7 +17,7 @@ You are an expert Python developer for the diffgentor project - a unified visual
 
 - **Python:** 3.10+
 - **Core Dependencies:** PyTorch ==2.8.0, diffusers ==0.36.0, transformers ==4.57.3
-- **Optional:** xDiT (multi-GPU), OpenAI API, xformers, DeepCache, torchao, bitsandbytes
+- **Optional:** xDiT (multi-GPU), OpenAI API, xformers, DeepCache, torchao, bitsandbytes, FastAPI/uvicorn (serve mode)
 - **Build System:** hatchling (pyproject.toml)
 - **Code Style:** black (line-length=120), ruff for linting
 
@@ -34,7 +34,12 @@ diffgentor/
 │   ├── editing/         # Editing backends (openai, google_genai, step1x, bagel, etc.)
 │   └── t2i/             # T2I backends (diffusers, xdit)
 ├── cli/                 # CLI interface
-│   └── main.py          # Argument parsing, subcommands (t2i, edit)
+│   └── main.py          # Argument parsing, subcommands (t2i, edit, serve)
+├── serve/               # OpenAI-compatible API server
+│   ├── __init__.py
+│   ├── app.py           # FastAPI app, model lifecycle, uvicorn launch
+│   ├── schemas.py       # Pydantic request/response models (OpenAI Images API)
+│   └── routes.py        # Route handlers (/v1/images/generations, /v1/images/edits, /v1/models)
 ├── launcher/            # Distributed launcher
 │   └── launcher.py      # Multi-process/GPU coordination
 ├── models/              # Model definitions
@@ -93,6 +98,12 @@ diffgentor edit --backend diffusers --model_name Qwen/Qwen-Image-Edit-2511 --inp
 # Run image editing with custom output filenames (from CSV/Parquet column)
 diffgentor edit --backend diffusers --model_name Qwen/Qwen-Image-Edit-2511 --input data.csv --output_name_column output_path
 
+# Start OpenAI-compatible API server (T2I mode)
+diffgentor serve --mode t2i --backend diffusers --model_name black-forest-labs/FLUX.1-dev --port 8000
+
+# Start OpenAI-compatible API server (editing mode)
+diffgentor serve --mode edit --backend diffusers --model_name Qwen/Qwen-Image-Edit-2511 --model_type qwen --port 8000
+
 # Lint code
 ruff check diffgentor/
 black --check diffgentor/
@@ -120,6 +131,28 @@ pytest tests/
 - Supported formats: `.png`, `.jpg`, `.jpeg` (other extensions default to `.png`)
 - Parent directories are automatically created
 - For multiple images per prompt, sub-index is appended: `aaa/bb/1_00.png`, `aaa/bb/1_01.png`
+
+### Serve Mode (OpenAI-Compatible API)
+
+The `serve` subcommand starts an HTTP server compatible with the OpenAI Python client (`openai.OpenAI`).
+
+**Endpoints:**
+- `POST /v1/images/generations` — T2I generation (requires `--mode t2i`)
+- `POST /v1/images/edits` — Image editing via multipart/form-data (requires `--mode edit`)
+- `GET /v1/models` — List the loaded model
+
+**Client usage:**
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+result = client.images.generate(prompt="A cat", model="FLUX.1-dev", n=1, size="1024x1024")
+```
+
+**Serve-specific environment variables:**
+- `DG_SERVE_NUM_INFERENCE_STEPS` — Override num_inference_steps for all requests
+- `DG_SERVE_GUIDANCE_SCALE` — Override guidance_scale for all requests
+
+**Dependencies:** `pip install diffgentor[serve]` (installs `fastapi`, `uvicorn[standard]`, `python-multipart`)
 
 ## Code Style Guidelines
 
@@ -164,6 +197,8 @@ Examples:
 - `DG_DEEPGEN_AR_MODEL_PATH=/path/to/qwen2.5-vl`
 - `DG_DEEPGEN_IMAGE_RESIZE_MODE=fix_pixels`
 - `DG_DEEPGEN_DEBUG_CHECKPOINT=1`
+- `DG_SERVE_NUM_INFERENCE_STEPS=28`
+- `DG_SERVE_GUIDANCE_SCALE=3.5`
 
 ### CLI Arguments vs Environment Variables
 

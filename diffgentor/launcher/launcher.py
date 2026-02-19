@@ -75,6 +75,10 @@ class Launcher:
         Returns:
             Appropriate launch strategy
         """
+        # Serve mode always runs in a single process
+        if self.command == "serve":
+            return LaunchStrategy.DIRECT
+
         # xDiT always uses torchrun
         if self.backend == "xdit":
             return LaunchStrategy.TORCHRUN
@@ -155,6 +159,8 @@ class Launcher:
             return self._run_t2i_worker()
         elif self.command == "edit":
             return self._run_edit_worker()
+        elif self.command == "serve":
+            return self._run_serve()
         else:
             raise ValueError(f"Unknown command: {self.command}")
 
@@ -424,3 +430,13 @@ class Launcher:
         from diffgentor.workers.edit_worker import run_edit
 
         return run_edit(self.args)
+
+    def _run_serve(self) -> int:
+        """Run the OpenAI-compatible API server.
+
+        Returns:
+            Exit code
+        """
+        from diffgentor.serve.app import run_serve
+
+        return run_serve(self.args)
