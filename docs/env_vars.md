@@ -96,6 +96,21 @@ DG_FLUX_KONTEXT_MAX_SEQUENCE_LENGTH=1024 \
 diffgentor edit --backend flux_kontext_official --model_name /path/to/flux --input data.csv
 ```
 
+## Serve Mode
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `DG_SERVE_NUM_INFERENCE_STEPS` | int | model default | Override denoising steps for all requests |
+| `DG_SERVE_GUIDANCE_SCALE` | float | model default | Override guidance scale for all requests |
+
+```bash
+DG_SERVE_NUM_INFERENCE_STEPS=28 \
+DG_SERVE_GUIDANCE_SCALE=3.5 \
+diffgentor serve --mode t2i --backend diffusers --model_name black-forest-labs/FLUX.1-dev
+```
+
+See [Serve Mode](serve.md) for full documentation.
+
 ## Boolean Values
 
 Boolean environment variables accept:
