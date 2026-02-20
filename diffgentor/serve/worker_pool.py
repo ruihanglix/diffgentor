@@ -168,8 +168,10 @@ class InProcessPool(WorkerPool):
     # -- lifecycle -----------------------------------------------------------
 
     def load(self) -> None:
-        """Load backend replicas on each GPU (called from the main thread)."""
-        for i, gpu_id in enumerate(self._gpu_ids[: self._num_workers]):
+        """Load backend replicas on each GPU in parallel (called from the main thread)."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def _load_one(i: int, gpu_id: int):
             cfg = BackendConfig(
                 backend=self._backend_config.backend,
                 model_name=self._backend_config.model_name,
@@ -185,8 +187,17 @@ class InProcessPool(WorkerPool):
                 backend = get_editing_backend(cfg, self._opt_config)
             logger.info("Loading replica %d on cuda:%d ...", i, gpu_id)
             backend.load_model()
-            self._backends.append(backend)
             logger.info("Replica %d ready", i)
+            return i, backend
+
+        items = list(enumerate(self._gpu_ids[: self._num_workers]))
+        with ThreadPoolExecutor(max_workers=len(items)) as executor:
+            futures = {executor.submit(_load_one, i, gpu_id): i for i, gpu_id in items}
+            results = {}
+            for future in as_completed(futures):
+                idx, backend = future.result()
+                results[idx] = backend
+        self._backends = [results[i] for i in range(len(items))]
 
     def start_workers(self) -> None:
         """Spawn asyncio worker tasks (must be called inside a running loop)."""
