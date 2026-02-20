@@ -200,10 +200,9 @@ def _build_inference_kwargs(
 
 def _form_str(value: object) -> Optional[str]:
     """Extract a string from a form field value, returning None for empty."""
-    if value is None or isinstance(value, UploadFile):
+    if value is None or not isinstance(value, str):
         return None
-    s = str(value)
-    return s if s else None
+    return value if value else None
 
 
 def _form_int(value: object, default: int = 1) -> int:
@@ -275,18 +274,16 @@ async def _parse_edit_multipart(request: Request) -> dict:
     if dl:
         field_summary = []
         for key, value in form.multi_items():
-            if isinstance(value, UploadFile):
-                field_summary.append(f"  {key}: UploadFile(filename={value.filename!r}, content_type={value.content_type!r})")
+            if not isinstance(value, str):
+                field_summary.append(f"  {key}: UploadFile(filename={value.filename!r}, size={value.size}, content_type={value.content_type!r})")
             else:
-                display = str(value)
-                if len(display) > 200:
-                    display = display[:200] + "..."
+                display = value if len(value) <= 200 else value[:200] + "..."
                 field_summary.append(f"  {key}: {display!r}")
         dl.debug("multipart form fields:\n%s", "\n".join(field_summary) if field_summary else "  (empty)")
 
     image_uploads: List[UploadFile] = []
     for key, value in form.multi_items():
-        if key in ("image", "image[]", "images", "images[]") and isinstance(value, UploadFile):
+        if key in ("image", "image[]", "images", "images[]") and not isinstance(value, str):
             image_uploads.append(value)
 
     prompt = _form_str(form.get("prompt"))
@@ -299,7 +296,7 @@ async def _parse_edit_multipart(request: Request) -> dict:
 
     mask_upload = form.get("mask")
     mask_image = None
-    if isinstance(mask_upload, UploadFile):
+    if mask_upload is not None and not isinstance(mask_upload, str):
         mask_image = await _read_upload_as_pil(mask_upload)
 
     return {
