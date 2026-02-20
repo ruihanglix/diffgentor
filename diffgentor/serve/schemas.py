@@ -2,7 +2,10 @@
 # Licensed under the Apache License, Version 2.0.
 # See LICENSE file in the project root for details.
 
-"""Pydantic models matching the OpenAI Images API request/response types."""
+"""Pydantic models matching the OpenAI Images API request/response types.
+
+Reference: https://platform.openai.com/docs/api-reference/images
+"""
 
 from typing import List, Optional
 
@@ -22,15 +25,28 @@ class ImageData(BaseModel):
     url: Optional[str] = None
 
 
+class ImageGenUsage(BaseModel):
+    """Token usage for GPT image models (optional for local backends)."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+
 class ImagesResponse(BaseModel):
     """Response format returned by /images/generations and /images/edits."""
 
     created: int
     data: List[ImageData] = Field(default_factory=list)
+    background: Optional[str] = None
+    output_format: Optional[str] = None
+    size: Optional[str] = None
+    quality: Optional[str] = None
+    usage: Optional[ImageGenUsage] = None
 
 
 # ---------------------------------------------------------------------------
-# Request models
+# Request models — /v1/images/generations (JSON body)
 # ---------------------------------------------------------------------------
 
 
@@ -44,13 +60,46 @@ class ImageGenerateRequest(BaseModel):
     quality: Optional[str] = None
     response_format: Optional[str] = "b64_json"
     output_format: Optional[str] = "png"
+    output_compression: Optional[int] = None
     background: Optional[str] = None
+    moderation: Optional[str] = None
     style: Optional[str] = None
+    user: Optional[str] = None
 
 
-# ImageEditRequest is not a Pydantic model because the OpenAI client sends
-# multipart/form-data.  We parse it directly from FastAPI Form/File params
-# in the route handler.
+# ---------------------------------------------------------------------------
+# Request models — /v1/images/edits (JSON body)
+# ---------------------------------------------------------------------------
+
+
+class ImageRefParam(BaseModel):
+    """Reference an input image by URL or file ID (JSON edit requests)."""
+
+    image_url: Optional[str] = None
+    file_id: Optional[str] = None
+
+
+class ImageEditJsonRequest(BaseModel):
+    """JSON body for POST /v1/images/edits.
+
+    Used when the client sends ``application/json`` instead of
+    ``multipart/form-data``.  Images are referenced via ``images`` (array of
+    ``ImageRefParam``) rather than binary uploads.
+    """
+
+    prompt: str
+    images: Optional[List[ImageRefParam]] = None
+    mask: Optional[ImageRefParam] = None
+    model: Optional[str] = None
+    n: Optional[int] = 1
+    size: Optional[str] = None
+    quality: Optional[str] = None
+    response_format: Optional[str] = "b64_json"
+    output_format: Optional[str] = "png"
+    output_compression: Optional[int] = None
+    background: Optional[str] = None
+    input_fidelity: Optional[str] = None
+    user: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +124,7 @@ class ModelListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Error response
+# Health / Error
 # ---------------------------------------------------------------------------
 
 

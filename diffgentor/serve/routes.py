@@ -2,7 +2,12 @@
 # Licensed under the Apache License, Version 2.0.
 # See LICENSE file in the project root for details.
 
-"""OpenAI-compatible API route handlers for diffgentor serve mode."""
+"""OpenAI-compatible API route handlers for diffgentor serve mode.
+
+Supports both ``multipart/form-data`` (binary uploads) and
+``application/json`` (image URLs / file IDs) for the edit endpoint,
+matching the OpenAI Images API specification.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +16,7 @@ import base64
 import io
 import logging
 import time
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from PIL import Image
@@ -19,6 +24,7 @@ from PIL import Image
 from diffgentor.serve.schemas import (
     HealthResponse,
     ImageData,
+    ImageEditJsonRequest,
     ImageGenerateRequest,
     ImagesResponse,
     ModelListResponse,
@@ -95,6 +101,33 @@ async def _read_upload_as_pil(upload: UploadFile) -> Image.Image:
     return Image.open(io.BytesIO(data)).convert("RGB")
 
 
+async def _download_image_url(url: str) -> Image.Image:
+    """Download an image from a URL, data-URL, or raw base64 string.
+
+    Supported formats:
+    - ``https://...`` or ``http://...`` — fetched via HTTP
+    - ``data:image/png;base64,iVBOR...`` — base64 data-URL (RFC 2397)
+    - raw base64 string (no prefix) — decoded directly
+    """
+    if url.startswith("data:"):
+        _, encoded = url.split(",", 1)
+        return Image.open(io.BytesIO(base64.b64decode(encoded))).convert("RGB")
+
+    if url.startswith(("http://", "https://")):
+        import httpx
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return Image.open(io.BytesIO(resp.content)).convert("RGB")
+
+    # Treat as raw base64-encoded image bytes
+    try:
+        return Image.open(io.BytesIO(base64.b64decode(url))).convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image_url: not a valid URL, data-URL, or base64 string")
+
+
 def _build_inference_kwargs(
     width: Optional[int] = None,
     height: Optional[int] = None,
@@ -119,6 +152,24 @@ def _build_inference_kwargs(
         kwargs["guidance_scale"] = cfg
 
     return kwargs
+
+
+def _form_str(value: object) -> Optional[str]:
+    """Extract a string from a form field value, returning None for empty."""
+    if value is None or isinstance(value, UploadFile):
+        return None
+    s = str(value)
+    return s if s else None
+
+
+def _form_int(value: object, default: int = 1) -> int:
+    """Extract an int from a form field value."""
+    if value is None:
+        return default
+    try:
+        return int(str(value))
+    except (ValueError, TypeError):
+        return default
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +207,7 @@ async def generate_images(req: ImageGenerateRequest):
             all_images.extend(images)
 
         data = [ImageData(b64_json=_pil_to_b64(img, output_format)) for img in all_images]
-        return ImagesResponse(created=int(time.time()), data=data)
+        return ImagesResponse(created=int(time.time()), data=data, output_format=output_format)
 
     except Exception as e:
         logger.exception("Image generation failed")
@@ -168,12 +219,92 @@ async def generate_images(req: ImageGenerateRequest):
 # ---------------------------------------------------------------------------
 
 
+async def _parse_edit_multipart(request: Request) -> dict:
+    """Parse a multipart/form-data edit request.
+
+    Handles both ``image`` (single file) and ``image[]`` (multiple files)
+    field names as used by the OpenAI API / curl clients.
+    """
+    form = await request.form()
+
+    image_uploads: List[UploadFile] = []
+    for key, value in form.multi_items():
+        if key in ("image", "image[]") and isinstance(value, UploadFile):
+            image_uploads.append(value)
+
+    prompt = _form_str(form.get("prompt"))
+    if not prompt:
+        raise HTTPException(status_code=422, detail="'prompt' field is required")
+
+    pil_images: List[Image.Image] = []
+    for upload in image_uploads:
+        pil_images.append(await _read_upload_as_pil(upload))
+
+    mask_upload = form.get("mask")
+    mask_image = None
+    if isinstance(mask_upload, UploadFile):
+        mask_image = await _read_upload_as_pil(mask_upload)
+
+    return {
+        "prompt": prompt,
+        "pil_images": pil_images,
+        "mask": mask_image,
+        "model": _form_str(form.get("model")),
+        "n": _form_int(form.get("n"), 1),
+        "size": _form_str(form.get("size")),
+        "quality": _form_str(form.get("quality")),
+        "output_format": _form_str(form.get("output_format")) or "png",
+        "output_compression": _form_int(form.get("output_compression"), 100) if form.get("output_compression") else None,
+        "background": _form_str(form.get("background")),
+        "input_fidelity": _form_str(form.get("input_fidelity")),
+    }
+
+
+async def _parse_edit_json(request: Request) -> dict:
+    """Parse a JSON edit request with image references (URLs / file IDs)."""
+    body = await request.json()
+    req = ImageEditJsonRequest(**body)
+
+    if not req.prompt:
+        raise HTTPException(status_code=422, detail="'prompt' field is required")
+
+    pil_images: List[Image.Image] = []
+    if req.images:
+        for ref in req.images:
+            if ref.image_url:
+                pil_images.append(await _download_image_url(ref.image_url))
+            elif ref.file_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="file_id references are not supported by this server. Use image_url instead.",
+                )
+
+    mask_image = None
+    if req.mask and req.mask.image_url:
+        mask_image = await _download_image_url(req.mask.image_url)
+
+    return {
+        "prompt": req.prompt,
+        "pil_images": pil_images,
+        "mask": mask_image,
+        "model": req.model,
+        "n": max(req.n or 1, 1),
+        "size": req.size,
+        "quality": req.quality,
+        "output_format": req.output_format or "png",
+        "output_compression": req.output_compression,
+        "background": req.background,
+        "input_fidelity": req.input_fidelity,
+    }
+
+
 @router.post("/v1/images/edits", response_model=ImagesResponse)
 async def edit_images(request: Request):
     """Handle image edit requests.
 
-    Parses multipart form data manually to support both ``image`` (single file)
-    and ``image[]`` (multiple files) field names used by the OpenAI API.
+    Accepts both ``multipart/form-data`` (binary uploads via ``image`` /
+    ``image[]``) and ``application/json`` (image references via ``images``
+    array with ``image_url`` or ``file_id``).
     """
     if _editing_backend is None and not (_worker_pool and _serve_mode == "edit"):
         raise HTTPException(
@@ -182,37 +313,26 @@ async def edit_images(request: Request):
             "Start the server with --mode edit to enable this endpoint.",
         )
 
-    form = await request.form()
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        params = await _parse_edit_json(request)
+    else:
+        params = await _parse_edit_multipart(request)
 
-    # Collect image uploads from both "image" and "image[]" field names
-    image_uploads: List[UploadFile] = []
-    for key, value in form.multi_items():
-        if key in ("image", "image[]") and isinstance(value, UploadFile):
-            image_uploads.append(value)
+    pil_images: List[Image.Image] = params["pil_images"]
+    prompt: str = params["prompt"]
+    n: int = max(params["n"], 1)
+    out_fmt: str = params["output_format"].lower()
 
-    prompt = form.get("prompt")
-    if not prompt or not isinstance(prompt, str):
-        raise HTTPException(status_code=422, detail="'prompt' field is required")
+    if not pil_images:
+        raise HTTPException(status_code=422, detail="At least one image is required")
 
-    if not image_uploads:
-        raise HTTPException(status_code=422, detail="At least one image file is required ('image' or 'image[]')")
-
-    n_raw = form.get("n")
-    n = max(int(n_raw) if n_raw else 1, 1)
-    size = form.get("size")
-    quality = form.get("quality")
-    out_fmt = (form.get("output_format") or "png").lower()
-
-    pil_images: List[Image.Image] = []
-    for upload in image_uploads:
-        pil_images.append(await _read_upload_as_pil(upload))
-
-    width, height = _parse_size(size if isinstance(size, str) else None)
-    kwargs = _build_inference_kwargs(width, height, quality if isinstance(quality, str) else None)
+    width, height = _parse_size(params["size"])
+    kwargs = _build_inference_kwargs(width, height, params["quality"])
 
     try:
         all_images: List[Image.Image] = []
-        input_imgs = pil_images if len(pil_images) > 1 else pil_images[0]
+        input_imgs: Union[Image.Image, List[Image.Image]] = pil_images if len(pil_images) > 1 else pil_images[0]
         for _ in range(n):
             if _worker_pool is not None:
                 edited = await _worker_pool.submit_edit(input_imgs, prompt, **kwargs)
@@ -227,7 +347,7 @@ async def edit_images(request: Request):
             all_images.extend(edited)
 
         data = [ImageData(b64_json=_pil_to_b64(img, out_fmt)) for img in all_images]
-        return ImagesResponse(created=int(time.time()), data=data)
+        return ImagesResponse(created=int(time.time()), data=data, output_format=out_fmt)
 
     except Exception as e:
         logger.exception("Image editing failed")
