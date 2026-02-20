@@ -146,3 +146,46 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
+
+
+# ---------------------------------------------------------------------------
+# LoRA management
+# ---------------------------------------------------------------------------
+
+
+class SetLoraRequest(BaseModel):
+    """Request body for POST /v1/set_lora."""
+
+    lora_nickname: str
+    lora_path: Optional[str] = None
+    strength: float = 1.0
+
+
+class MergeLoraRequest(BaseModel):
+    """Request body for POST /v1/merge_lora_weights."""
+
+    strength: float = 1.0
+
+
+class LoraAdapterInfo(BaseModel):
+    """Info about a single loaded LoRA adapter."""
+
+    nickname: str
+    path: str
+    strength: float = 1.0
+    fused: bool = False
+
+
+class ListLorasResponse(BaseModel):
+    """Response for GET /v1/list_loras."""
+
+    loaded_adapters: List[LoraAdapterInfo] = Field(default_factory=list)
+    active: Optional[List[str]] = None
+    fused: bool = False
+
+
+class LoraActionResponse(BaseModel):
+    """Generic response for LoRA mutation endpoints."""
+
+    status: str = "ok"
+    message: str = ""

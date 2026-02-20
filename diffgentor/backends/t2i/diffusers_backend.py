@@ -10,6 +10,7 @@ import torch
 from PIL import Image
 
 from diffgentor.backends.base import BaseBackend
+from diffgentor.backends.lora_mixin import DiffusersLoRAMixin
 from diffgentor.config import (
     BackendConfig,
     OptimizationConfig,
@@ -52,11 +53,12 @@ T2I_MODEL_CONFIGS = {
 }
 
 
-class DiffusersBackend(BaseBackend):
+class DiffusersBackend(DiffusersLoRAMixin, BaseBackend):
     """Diffusers backend using HuggingFace diffusers library.
 
     Supports automatic model type detection via DiffusionPipeline
     or explicit pipeline selection via model_type parameter.
+    Also supports dynamic LoRA adapter management via the ``DiffusersLoRAMixin``.
     """
 
     def __init__(
@@ -73,6 +75,7 @@ class DiffusersBackend(BaseBackend):
         super().__init__(backend_config, optimization_config)
         self._pipeline_class = None
         self._model_config = None
+        self._init_lora_state()
 
     def load_model(self, **kwargs) -> None:
         """Load diffusers pipeline.

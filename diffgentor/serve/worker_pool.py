@@ -54,9 +54,18 @@ class _EditRequest:
 
 
 @dataclass
+class _LoraRequest:
+    """LoRA management command sent to workers."""
+
+    action: str  # "load", "set_active", "fuse", "unfuse", "unload", "list"
+    kwargs: Dict[str, Any]
+
+
+@dataclass
 class _Response:
     images_bytes: Optional[List[bytes]] = None
     error: Optional[str] = None
+    lora_result: Optional[Dict[str, Any]] = None
 
 
 def _pil_to_bytes(img: Image.Image) -> bytes:
@@ -89,6 +98,20 @@ class WorkerPool(ABC):
         **kwargs: Any,
     ) -> List[Image.Image]:
         """Submit an image editing request."""
+
+    @abstractmethod
+    async def submit_lora(self, action: str, **kwargs: Any) -> Dict[str, Any]:
+        """Submit a LoRA management command to all workers.
+
+        The command is broadcast to every worker replica so they stay in sync.
+
+        Args:
+            action: One of "load", "set_active", "fuse", "unfuse", "unload", "list"
+            **kwargs: Action-specific arguments
+
+        Returns:
+            Result dict from the first worker (all workers should agree).
+        """
 
     @abstractmethod
     async def shutdown(self) -> None:
@@ -170,6 +193,10 @@ class InProcessPool(WorkerPool):
                     result = await asyncio.to_thread(
                         backend.edit, input_imgs, request.instruction, **request.kwargs
                     )
+                elif isinstance(request, _LoraRequest):
+                    result = await asyncio.to_thread(
+                        _execute_lora_on_backend, backend, request
+                    )
                 else:
                     raise TypeError(f"Unknown request type: {type(request)}")
                 future.set_result(result)
@@ -202,6 +229,17 @@ class InProcessPool(WorkerPool):
         )
         return await future
 
+    async def submit_lora(self, action: str, **kwargs: Any) -> Dict[str, Any]:
+        """Broadcast a LoRA command to all worker replicas."""
+        loop = asyncio.get_running_loop()
+        futures: List[asyncio.Future] = []
+        for _ in self._backends:
+            future: asyncio.Future[Dict[str, Any]] = loop.create_future()
+            await self._queue.put((_LoraRequest(action=action, kwargs=kwargs), future))
+            futures.append(future)
+        results = await asyncio.gather(*futures)
+        return results[0] if results else {}
+
     async def shutdown(self) -> None:
         for task in self._worker_tasks:
             task.cancel()
@@ -209,6 +247,40 @@ class InProcessPool(WorkerPool):
         for backend in self._backends:
             backend.cleanup()
         self._backends.clear()
+
+
+# ---------------------------------------------------------------------------
+# LoRA execution helper (shared by InProcessPool and SubprocessPool)
+# ---------------------------------------------------------------------------
+
+
+def _execute_lora_on_backend(backend: Any, request: _LoraRequest) -> Dict[str, Any]:
+    """Execute a LoRA management action on a single backend instance."""
+    action = request.action
+    kw = request.kwargs
+
+    if not getattr(backend, "supports_lora", False):
+        raise RuntimeError(f"Backend {type(backend).__name__} does not support LoRA")
+
+    if action == "load":
+        backend.load_lora(lora_path=kw["lora_path"], adapter_name=kw["adapter_name"], strength=kw.get("strength", 1.0))
+        return {"status": "ok", "message": f"Loaded LoRA '{kw['adapter_name']}'"}
+    elif action == "set_active":
+        backend.set_active_loras(adapter_names=kw["adapter_names"], strengths=kw["strengths"])
+        return {"status": "ok", "message": "Active adapters updated"}
+    elif action == "fuse":
+        backend.fuse_lora(adapter_names=kw.get("adapter_names"), lora_scale=kw.get("lora_scale", 1.0))
+        return {"status": "ok", "message": "LoRA weights fused"}
+    elif action == "unfuse":
+        backend.unfuse_lora()
+        return {"status": "ok", "message": "LoRA weights unfused"}
+    elif action == "unload":
+        backend.unload_lora(adapter_name=kw.get("adapter_name"))
+        return {"status": "ok", "message": "LoRA unloaded"}
+    elif action == "list":
+        return backend.list_loras()
+    else:
+        raise ValueError(f"Unknown LoRA action: {action}")
 
 
 # ---------------------------------------------------------------------------
@@ -266,14 +338,17 @@ def _subprocess_worker(
         try:
             if isinstance(request, _GenerateRequest):
                 result_imgs = backend.generate(request.prompt, **request.kwargs)
+                resp = _Response(images_bytes=[_pil_to_bytes(img) for img in result_imgs])
             elif isinstance(request, _EditRequest):
                 imgs = [_bytes_to_pil(b) for b in request.images_bytes]
                 input_imgs: Any = imgs if len(imgs) > 1 else imgs[0]
                 result_imgs = backend.edit(input_imgs, request.instruction, **request.kwargs)
+                resp = _Response(images_bytes=[_pil_to_bytes(img) for img in result_imgs])
+            elif isinstance(request, _LoraRequest):
+                lora_result = _execute_lora_on_backend(backend, request)
+                resp = _Response(lora_result=lora_result)
             else:
                 raise TypeError(f"Unknown request type: {type(request)}")
-
-            resp = _Response(images_bytes=[_pil_to_bytes(img) for img in result_imgs])
         except Exception as exc:
             resp = _Response(error=f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}")
 
@@ -366,6 +441,8 @@ class SubprocessPool(WorkerPool):
                 continue
             if response.error:
                 future.set_exception(RuntimeError(response.error))
+            elif response.lora_result is not None:
+                future.set_result(response.lora_result)
             else:
                 future.set_result([_bytes_to_pil(b) for b in response.images_bytes])
 
@@ -406,6 +483,22 @@ class SubprocessPool(WorkerPool):
             (req_id, _EditRequest(images_bytes=images_bytes, instruction=instruction, kwargs=kwargs))
         )
         return await future
+
+    async def submit_lora(self, action: str, **kwargs: Any) -> Dict[str, Any]:
+        """Broadcast a LoRA command to all subprocess workers."""
+        loop = asyncio.get_running_loop()
+        futures: List[asyncio.Future] = []
+        for worker_idx in range(self._num_workers):
+            future: asyncio.Future[Dict[str, Any]] = loop.create_future()
+            req_id = self._next_id
+            self._next_id += 1
+            self._pending[req_id] = future
+            self._request_queues[worker_idx].put(
+                (req_id, _LoraRequest(action=action, kwargs=kwargs))
+            )
+            futures.append(future)
+        results = await asyncio.gather(*futures)
+        return results[0] if results else {}
 
     async def shutdown(self) -> None:
         for q in self._request_queues:

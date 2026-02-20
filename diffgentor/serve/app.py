@@ -186,8 +186,12 @@ def run_serve(args: Namespace) -> int:
         print(f"Starting server on {host}:{port}  (mode={mode}, model={backend_config.model_name})")
     print(f"  POST /v1/images/generations  {'[enabled]' if (t2i_backend or (pool and mode == 't2i')) else '[disabled]'}")
     print(f"  POST /v1/images/edits        {'[enabled]' if (editing_backend or (pool and mode == 'edit')) else '[disabled]'}")
-    print(f"  GET  /v1/models              [enabled]")
-    print(f"  GET  /health                 [enabled]")
+    print("  GET  /v1/models              [enabled]")
+    print("  POST /v1/set_lora            [enabled]")
+    print("  POST /v1/merge_lora_weights  [enabled]")
+    print("  POST /v1/unmerge_lora_weights [enabled]")
+    print("  GET  /v1/list_loras          [enabled]")
+    print("  GET  /health                 [enabled]")
 
     uvicorn.run(app, host=host, port=port, log_level="info")
 

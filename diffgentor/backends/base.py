@@ -11,7 +11,7 @@ This module defines the abstract base classes for all backends:
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from PIL import Image
 
@@ -26,6 +26,7 @@ class BasePipelineBackend(ABC):
     - Model lifecycle (load, cleanup)
     - Optimization application
     - Context manager support
+    - LoRA adapter management (optional, for diffusers-based backends)
     """
 
     def __init__(
@@ -65,6 +66,11 @@ class BasePipelineBackend(ABC):
         """Check if backend is initialized."""
         return self._initialized
 
+    @property
+    def supports_lora(self) -> bool:
+        """Whether this backend supports dynamic LoRA adapter management."""
+        return False
+
     @abstractmethod
     def load_model(self, **kwargs) -> None:
         """Load and initialize the model.
@@ -102,6 +108,58 @@ class BasePipelineBackend(ABC):
         """Context manager exit."""
         self.cleanup()
         return False
+
+    # ------------------------------------------------------------------
+    # LoRA adapter management (optional)
+    # ------------------------------------------------------------------
+
+    def load_lora(self, lora_path: str, adapter_name: str, strength: float = 1.0) -> None:
+        """Load a LoRA adapter and activate it.
+
+        Args:
+            lora_path: Path to LoRA weights (safetensors file, directory, or HF repo ID)
+            adapter_name: Unique nickname for this adapter
+            strength: Adapter strength (scale), default 1.0
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support LoRA management")
+
+    def set_active_loras(self, adapter_names: List[str], strengths: List[float]) -> None:
+        """Set which loaded adapters are active (on-the-fly, without fusing).
+
+        Args:
+            adapter_names: List of adapter nicknames to activate
+            strengths: Corresponding strengths for each adapter
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support LoRA management")
+
+    def fuse_lora(self, adapter_names: Optional[List[str]] = None, lora_scale: float = 1.0) -> None:
+        """Fuse active LoRA weights into the base model for faster inference.
+
+        Args:
+            adapter_names: Adapters to fuse (None = currently active ones)
+            lora_scale: Scale factor for fusion
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support LoRA management")
+
+    def unfuse_lora(self) -> None:
+        """Unfuse LoRA weights, restoring the base model."""
+        raise NotImplementedError(f"{type(self).__name__} does not support LoRA management")
+
+    def unload_lora(self, adapter_name: Optional[str] = None) -> None:
+        """Completely unload a LoRA adapter from memory.
+
+        Args:
+            adapter_name: Adapter to unload (None = unload all)
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support LoRA management")
+
+    def list_loras(self) -> Dict[str, Any]:
+        """List loaded LoRA adapters and their status.
+
+        Returns:
+            Dict with ``loaded_adapters`` and ``active`` keys.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support LoRA management")
 
 
 class BaseBackend(BasePipelineBackend):

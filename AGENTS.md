@@ -148,6 +148,10 @@ The `serve` subcommand starts an HTTP server compatible with the OpenAI Python c
 - `POST /v1/images/generations` — T2I generation (requires `--mode t2i`)
 - `POST /v1/images/edits` — Image editing via multipart/form-data (requires `--mode edit`)
 - `GET /v1/models` — List the loaded model
+- `POST /v1/set_lora` — Load and activate a LoRA adapter at runtime
+- `POST /v1/merge_lora_weights` — Fuse active LoRA weights into the base model
+- `POST /v1/unmerge_lora_weights` — Unfuse LoRA weights, restoring the base model
+- `GET /v1/list_loras` — List loaded LoRA adapters and their status
 
 **Client usage:**
 ```python
@@ -156,9 +160,24 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 result = client.images.generate(prompt="A cat", model="FLUX.1-dev", n=1, size="1024x1024")
 ```
 
+**LoRA hot-loading:**
+```bash
+# Load a LoRA adapter at runtime
+curl -X POST http://localhost:8000/v1/set_lora \
+  -H "Content-Type: application/json" \
+  -d '{"lora_nickname": "my_style", "lora_path": "/path/to/lora.safetensors", "strength": 0.8}'
+
+# Switch LoRA (previous adapter stays cached for instant switching)
+curl -X POST http://localhost:8000/v1/set_lora \
+  -d '{"lora_nickname": "other_style", "lora_path": "/path/to/other.safetensors"}'
+```
+
+LoRA management is supported for all diffusers-based backends (both T2I and editing). API backends (OpenAI, Google GenAI) and non-diffusers backends return HTTP 400. See `docs/serve.md` for full documentation.
+
 **Multi-GPU serving:**
 - `--num_gpus N`: Load N replicas across N GPUs (data parallelism, 1 GPU per model)
 - For models needing multiple GPUs per instance (emu35, hunyuan_image_3), set `DG_*_GPUS_PER_MODEL` and the server spawns subprocess workers with isolated `CUDA_VISIBLE_DEVICES`
+- LoRA operations are automatically broadcast to all worker replicas
 - See `docs/serve.md` for details
 
 **Serve-specific environment variables:**

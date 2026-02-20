@@ -27,8 +27,13 @@ from diffgentor.serve.schemas import (
     ImageEditJsonRequest,
     ImageGenerateRequest,
     ImagesResponse,
+    ListLorasResponse,
+    LoraActionResponse,
+    LoraAdapterInfo,
+    MergeLoraRequest,
     ModelListResponse,
     ModelObject,
+    SetLoraRequest,
 )
 from diffgentor.utils.env import get_env_str
 
@@ -450,6 +455,125 @@ async def retrieve_model(model_id: str):
     if model_id != _model_name:
         raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
     return ModelObject(id=_model_name, created=0, owned_by="diffgentor")
+
+
+# ---------------------------------------------------------------------------
+# LoRA management endpoints
+# ---------------------------------------------------------------------------
+
+
+def _get_lora_backend():
+    """Return the active backend that supports LoRA, or raise 400."""
+    backend = _t2i_backend or _editing_backend
+    if backend is not None:
+        if not getattr(backend, "supports_lora", False):
+            raise HTTPException(status_code=400, detail=f"Backend {type(backend).__name__} does not support LoRA")
+        return backend
+    if _worker_pool is not None:
+        return None  # use pool path
+    raise HTTPException(status_code=400, detail="No backend loaded")
+
+
+@router.post("/v1/set_lora", response_model=LoraActionResponse)
+async def set_lora(req: SetLoraRequest):
+    """Load a LoRA adapter and activate it.
+
+    If the adapter was previously loaded (same nickname & path), it is
+    re-activated from cache without re-downloading.
+    """
+    if not req.lora_path and not req.lora_nickname:
+        raise HTTPException(status_code=422, detail="lora_nickname is required")
+
+    lora_path = req.lora_path or req.lora_nickname
+
+    try:
+        if _worker_pool is not None:
+            result = await _worker_pool.submit_lora(
+                "load",
+                lora_path=lora_path,
+                adapter_name=req.lora_nickname,
+                strength=req.strength,
+            )
+            return LoraActionResponse(**result)
+
+        backend = _get_lora_backend()
+        async with _gpu_semaphore:
+            await asyncio.to_thread(
+                backend.load_lora,
+                lora_path=lora_path,
+                adapter_name=req.lora_nickname,
+                strength=req.strength,
+            )
+        return LoraActionResponse(status="ok", message=f"Loaded LoRA '{req.lora_nickname}'")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to set LoRA")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/v1/merge_lora_weights", response_model=LoraActionResponse)
+async def merge_lora_weights(req: MergeLoraRequest):
+    """Fuse currently active LoRA weights into the base model."""
+    try:
+        if _worker_pool is not None:
+            result = await _worker_pool.submit_lora("fuse", lora_scale=req.strength)
+            return LoraActionResponse(**result)
+
+        backend = _get_lora_backend()
+        async with _gpu_semaphore:
+            await asyncio.to_thread(backend.fuse_lora, lora_scale=req.strength)
+        return LoraActionResponse(status="ok", message="LoRA weights fused")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to merge LoRA weights")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/v1/unmerge_lora_weights", response_model=LoraActionResponse)
+async def unmerge_lora_weights():
+    """Unfuse LoRA weights, restoring the base model."""
+    try:
+        if _worker_pool is not None:
+            result = await _worker_pool.submit_lora("unfuse")
+            return LoraActionResponse(**result)
+
+        backend = _get_lora_backend()
+        async with _gpu_semaphore:
+            await asyncio.to_thread(backend.unfuse_lora)
+        return LoraActionResponse(status="ok", message="LoRA weights unfused")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to unmerge LoRA weights")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/v1/list_loras", response_model=ListLorasResponse)
+async def list_loras():
+    """List loaded LoRA adapters and their status."""
+    try:
+        if _worker_pool is not None:
+            result = await _worker_pool.submit_lora("list")
+            return ListLorasResponse(
+                loaded_adapters=[LoraAdapterInfo(**a) for a in result.get("loaded_adapters", [])],
+                active=result.get("active"),
+                fused=result.get("fused", False),
+            )
+
+        backend = _get_lora_backend()
+        info = backend.list_loras()
+        return ListLorasResponse(
+            loaded_adapters=[LoraAdapterInfo(**a) for a in info.get("loaded_adapters", [])],
+            active=info.get("active"),
+            fused=info.get("fused", False),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to list LoRA adapters")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------

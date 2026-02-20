@@ -15,12 +15,13 @@ from diffgentor.backends.editing.strategies import (
     get_model_strategy,
 )
 from diffgentor.backends.editing.strategies.registry import detect_editing_model_type
+from diffgentor.backends.lora_mixin import DiffusersLoRAMixin
 from diffgentor.config import BackendConfig, OptimizationConfig
 from diffgentor.utils.exceptions import EditingError, ModelLoadError, log_error
 from diffgentor.utils.logging import print_rank0
 
 
-class DiffusersEditingBackend(BaseEditingBackend):
+class DiffusersEditingBackend(DiffusersLoRAMixin, BaseEditingBackend):
     """Unified diffusers editing backend using strategy pattern.
 
     This backend supports multiple model types through pluggable strategies:
@@ -37,6 +38,8 @@ class DiffusersEditingBackend(BaseEditingBackend):
     - Input image preparation
     - Default parameters
     - Batch inference support
+
+    Also supports dynamic LoRA adapter management via the ``DiffusersLoRAMixin``.
     """
 
     def __init__(
@@ -53,6 +56,7 @@ class DiffusersEditingBackend(BaseEditingBackend):
         super().__init__(backend_config, optimization_config)
         self._strategy: Optional[ModelStrategy] = None
         self._effective_model_type: Optional[str] = None
+        self._init_lora_state()
 
     @property
     def strategy(self) -> ModelStrategy:

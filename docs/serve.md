@@ -65,6 +65,10 @@ with open("cat.png", "wb") as f:
 | `POST` | `/v1/images/edits` | Image editing (multipart/form-data) | `--mode edit` |
 | `GET` | `/v1/models` | List loaded model(s) | always |
 | `GET` | `/v1/models/{model_id}` | Retrieve a specific model | always |
+| `POST` | `/v1/set_lora` | Load and activate a LoRA adapter | diffusers backend |
+| `POST` | `/v1/merge_lora_weights` | Fuse LoRA weights into the base model | diffusers backend |
+| `POST` | `/v1/unmerge_lora_weights` | Unfuse LoRA, restore base model | diffusers backend |
+| `GET` | `/v1/list_loras` | List loaded LoRA adapters | diffusers backend |
 
 Calling an endpoint whose mode is not active returns HTTP 400 with a descriptive message.
 
@@ -429,6 +433,116 @@ The server loads the model once at startup and keeps it resident in GPU memory. 
           (device_map=   (device_map=   (device_map=
            "auto")        "auto")        "auto")
 ```
+
+## LoRA Hot-Loading
+
+The server supports dynamic LoRA adapter management, allowing you to load, switch, and unload LoRA adapters at runtime without restarting the server. This works with all diffusers-based backends (both T2I and editing).
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/set_lora` | Load and activate a LoRA adapter |
+| `POST` | `/v1/merge_lora_weights` | Fuse active LoRA weights into the base model |
+| `POST` | `/v1/unmerge_lora_weights` | Unfuse LoRA weights, restoring the base model |
+| `GET` | `/v1/list_loras` | List loaded adapters and their status |
+
+### POST /v1/set_lora
+
+Load a LoRA adapter and make it active for subsequent inference requests.
+
+**Request fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `lora_nickname` | string | *required* | Unique identifier for this adapter |
+| `lora_path` | string | nickname | Path to `.safetensors` file, directory, or HuggingFace repo ID |
+| `strength` | float | `1.0` | Adapter strength (scale factor) |
+
+```bash
+curl -X POST http://localhost:8000/v1/set_lora \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lora_nickname": "my_style",
+    "lora_path": "/path/to/lora.safetensors",
+    "strength": 0.8
+  }'
+```
+
+**Caching:** If you call `set_lora` again with the same nickname and path, the adapter weights are reused from cache — only the strength is updated.
+
+### POST /v1/merge_lora_weights
+
+Fuse the currently active LoRA weights directly into the base model for slightly faster inference.
+
+```bash
+curl -X POST http://localhost:8000/v1/merge_lora_weights \
+  -H "Content-Type: application/json" \
+  -d '{"strength": 0.8}'
+```
+
+### POST /v1/unmerge_lora_weights
+
+Unfuse the LoRA weights, restoring the base model. You must call this before switching to a different LoRA if you used `merge_lora_weights`.
+
+```bash
+curl -X POST http://localhost:8000/v1/unmerge_lora_weights
+```
+
+### GET /v1/list_loras
+
+List all loaded LoRA adapters and their current status.
+
+```bash
+curl http://localhost:8000/v1/list_loras
+```
+
+**Response example:**
+
+```json
+{
+  "loaded_adapters": [
+    {
+      "nickname": "my_style",
+      "path": "/path/to/lora.safetensors",
+      "strength": 0.8,
+      "fused": false
+    }
+  ],
+  "active": ["my_style"],
+  "fused": false
+}
+```
+
+### Switching LoRAs
+
+```bash
+# 1. Load and activate LoRA A
+curl -X POST http://localhost:8000/v1/set_lora \
+  -d '{"lora_nickname": "lora_a", "lora_path": "/path/to/A.safetensors"}'
+
+# 2. Generate with LoRA A...
+
+# 3. Switch to LoRA B (previous adapter stays cached)
+curl -X POST http://localhost:8000/v1/set_lora \
+  -d '{"lora_nickname": "lora_b", "lora_path": "/path/to/B.safetensors"}'
+
+# 4. Generate with LoRA B...
+
+# 5. Switch back to LoRA A (instant, loaded from cache)
+curl -X POST http://localhost:8000/v1/set_lora \
+  -d '{"lora_nickname": "lora_a", "lora_path": "/path/to/A.safetensors"}'
+```
+
+### Multi-GPU Support
+
+LoRA operations are automatically broadcast to all worker replicas in both `InProcessPool` and `SubprocessPool` modes, keeping all replicas in sync.
+
+### Caveats
+
+- **Supported backends only:** LoRA management requires diffusers-based backends (`diffusers` backend for T2I, or diffusers editing backends). API backends (OpenAI, Google GenAI) and non-diffusers backends (step1x, bagel, emu35) will return HTTP 400.
+- **torch.compile:** If `--enable_compile` is used, switching LoRA may invalidate compiled graphs, causing a one-time recompilation delay.
+- **xDiT backend:** Not supported for LoRA management.
 
 ## Limitations
 
