@@ -103,6 +103,10 @@ class DreamOmni2Backend(BaseEditingBackend):
             device = self.backend_config.device
             if device == "cuda" and torch.cuda.is_available():
                 self._pipe = self._pipe.to(device)
+            elif device == "cuda" and not torch.cuda.is_available():
+                print_rank0("WARNING: CUDA requested but not available, model will run on CPU")
+            elif device != "cuda":
+                self._pipe = self._pipe.to(device)
 
             # Load LoRA if provided
             if self._lora_path:

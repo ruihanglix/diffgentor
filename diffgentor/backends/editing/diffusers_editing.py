@@ -140,6 +140,10 @@ class DiffusersEditingBackend(BaseEditingBackend):
                 print_rank0(f"Distributed mode: device {device} (world_size={get_world_size()})")
 
             self.pipe = self.pipe.to(device)
+        elif device == "cuda" and not torch.cuda.is_available():
+            print_rank0("WARNING: CUDA requested but not available, model will run on CPU")
+        elif device != "cuda":
+            self.pipe = self.pipe.to(device)
 
     def _get_pipeline_class(self, class_name: str):
         """Get pipeline class by name."""
