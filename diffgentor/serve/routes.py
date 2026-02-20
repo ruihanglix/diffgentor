@@ -13,12 +13,10 @@ import logging
 import time
 from typing import TYPE_CHECKING, List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from PIL import Image
 
 from diffgentor.serve.schemas import (
-    ErrorDetail,
-    ErrorResponse,
     HealthResponse,
     ImageData,
     ImageGenerateRequest,
@@ -171,17 +169,12 @@ async def generate_images(req: ImageGenerateRequest):
 
 
 @router.post("/v1/images/edits", response_model=ImagesResponse)
-async def edit_images(
-    image: List[UploadFile] = File(...),
-    prompt: str = Form(...),
-    model: Optional[str] = Form(None),
-    n: Optional[int] = Form(1),
-    size: Optional[str] = Form(None),
-    quality: Optional[str] = Form(None),
-    response_format: Optional[str] = Form("b64_json"),
-    output_format: Optional[str] = Form("png"),
-    mask: Optional[UploadFile] = File(None),
-):
+async def edit_images(request: Request):
+    """Handle image edit requests.
+
+    Parses multipart form data manually to support both ``image`` (single file)
+    and ``image[]`` (multiple files) field names used by the OpenAI API.
+    """
     if _editing_backend is None and not (_worker_pool and _serve_mode == "edit"):
         raise HTTPException(
             status_code=400,
@@ -189,15 +182,33 @@ async def edit_images(
             "Start the server with --mode edit to enable this endpoint.",
         )
 
-    out_fmt = (output_format or "png").lower()
-    n = max(n or 1, 1)
+    form = await request.form()
+
+    # Collect image uploads from both "image" and "image[]" field names
+    image_uploads: List[UploadFile] = []
+    for key, value in form.multi_items():
+        if key in ("image", "image[]") and isinstance(value, UploadFile):
+            image_uploads.append(value)
+
+    prompt = form.get("prompt")
+    if not prompt or not isinstance(prompt, str):
+        raise HTTPException(status_code=422, detail="'prompt' field is required")
+
+    if not image_uploads:
+        raise HTTPException(status_code=422, detail="At least one image file is required ('image' or 'image[]')")
+
+    n_raw = form.get("n")
+    n = max(int(n_raw) if n_raw else 1, 1)
+    size = form.get("size")
+    quality = form.get("quality")
+    out_fmt = (form.get("output_format") or "png").lower()
 
     pil_images: List[Image.Image] = []
-    for upload in image:
+    for upload in image_uploads:
         pil_images.append(await _read_upload_as_pil(upload))
 
-    width, height = _parse_size(size)
-    kwargs = _build_inference_kwargs(width, height, quality)
+    width, height = _parse_size(size if isinstance(size, str) else None)
+    kwargs = _build_inference_kwargs(width, height, quality if isinstance(quality, str) else None)
 
     try:
         all_images: List[Image.Image] = []
