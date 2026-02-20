@@ -30,11 +30,55 @@ from diffgentor.serve.schemas import (
     ModelListResponse,
     ModelObject,
 )
+from diffgentor.utils.env import get_env_str
 
 if TYPE_CHECKING:
     from diffgentor.serve.worker_pool import WorkerPool
 
 logger = logging.getLogger("diffgentor.serve")
+
+# ---------------------------------------------------------------------------
+# DG_DEBUG_SERVE: set to "1" (writes to ./serve_debug.log) or a file path.
+# Logs full request details for non-200 responses to help diagnose issues.
+# ---------------------------------------------------------------------------
+_debug_logger: Optional[logging.Logger] = None
+
+
+def _init_debug_logger() -> Optional[logging.Logger]:
+    global _debug_logger
+    if _debug_logger is not None:
+        return _debug_logger
+
+    val = get_env_str("DEBUG_SERVE")
+    if not val:
+        return None
+
+    log_path = "serve_debug.log" if val.lower() in ("1", "true", "yes", "on") else val
+
+    dl = logging.getLogger("diffgentor.serve.debug")
+    dl.setLevel(logging.DEBUG)
+    dl.propagate = False
+    if not dl.handlers:
+        from pathlib import Path
+
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+        fh.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+        dl.addHandler(fh)
+
+        sh = logging.StreamHandler()
+        sh.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt="%H:%M:%S"))
+        dl.addHandler(sh)
+
+    _debug_logger = dl
+    dl.debug("[DEBUG_SERVE] initialized, logging to %s", log_path)
+    return dl
+
+
+def _dbg() -> Optional[logging.Logger]:
+    """Return the debug logger if DG_DEBUG_SERVE is enabled, else None."""
+    return _init_debug_logger()
+
 
 router = APIRouter()
 
@@ -227,6 +271,19 @@ async def _parse_edit_multipart(request: Request) -> dict:
     """
     form = await request.form()
 
+    dl = _dbg()
+    if dl:
+        field_summary = []
+        for key, value in form.multi_items():
+            if isinstance(value, UploadFile):
+                field_summary.append(f"  {key}: UploadFile(filename={value.filename!r}, content_type={value.content_type!r})")
+            else:
+                display = str(value)
+                if len(display) > 200:
+                    display = display[:200] + "..."
+                field_summary.append(f"  {key}: {display!r}")
+        dl.debug("multipart form fields:\n%s", "\n".join(field_summary) if field_summary else "  (empty)")
+
     image_uploads: List[UploadFile] = []
     for key, value in form.multi_items():
         if key in ("image", "image[]", "images", "images[]") and isinstance(value, UploadFile):
@@ -263,6 +320,17 @@ async def _parse_edit_multipart(request: Request) -> dict:
 async def _parse_edit_json(request: Request) -> dict:
     """Parse a JSON edit request with image references (URLs / file IDs)."""
     body = await request.json()
+
+    dl = _dbg()
+    if dl:
+        safe_body = {}
+        for k, v in body.items():
+            if isinstance(v, str) and len(v) > 200:
+                safe_body[k] = v[:200] + f"...({len(v)} chars)"
+            else:
+                safe_body[k] = v
+        dl.debug("JSON body: %s", safe_body)
+
     req = ImageEditJsonRequest(**body)
 
     if not req.prompt:
@@ -306,6 +374,12 @@ async def edit_images(request: Request):
     ``image[]``) and ``application/json`` (image references via ``images``
     array with ``image_url`` or ``file_id``).
     """
+    dl = _dbg()
+
+    if dl:
+        ct = request.headers.get("content-type", "(not set)")
+        dl.debug("%s %s  content-type=%s", request.method, request.url.path, ct)
+
     if _editing_backend is None and not (_worker_pool and _serve_mode == "edit"):
         raise HTTPException(
             status_code=400,
@@ -325,7 +399,13 @@ async def edit_images(request: Request):
     out_fmt: str = params["output_format"].lower()
 
     if not pil_images:
+        if dl:
+            dl.debug("No images found in request. Parsed params: %s", {k: v for k, v in params.items() if k != "pil_images"})
         raise HTTPException(status_code=422, detail="At least one image is required")
+
+    if dl:
+        img_sizes = [f"{img.size[0]}x{img.size[1]}" for img in pil_images]
+        dl.debug("Parsed %d image(s): %s, prompt=%r", len(pil_images), img_sizes, prompt[:100])
 
     width, height = _parse_size(params["size"])
     kwargs = _build_inference_kwargs(width, height, params["quality"])
