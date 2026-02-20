@@ -49,39 +49,75 @@ class DiffusersLoRAMixin:
         return hasattr(self.pipe, "load_lora_weights")
 
     def load_lora(self, lora_path: str, adapter_name: str, strength: float = 1.0) -> None:
-        """Load a LoRA adapter and make it active.
+        """Load a single LoRA adapter and make it active.
 
-        If the adapter was already loaded (same nickname), its weights are
-        reused from cache — only ``set_adapters`` is called to re-activate it.
+        Convenience wrapper around ``load_loras`` for the single-adapter case.
+        """
+        self.load_loras([lora_path], [adapter_name], [strength])
+
+    def load_loras(
+        self,
+        lora_paths: List[str],
+        adapter_names: List[str],
+        strengths: List[float],
+        targets: Optional[List[str]] = None,
+    ) -> None:
+        """Load one or more LoRA adapters and activate them all simultaneously.
+
+        Adapters that are already loaded (same nickname + path) are reused from
+        cache without re-downloading.  All specified adapters are activated
+        together via ``set_adapters``.
+
+        Args:
+            targets: Per-adapter target component.  Accepted values depend on
+                the pipeline; the default ``"all"`` applies to every component
+                that has LoRA support.  For diffusers pipelines with a single
+                transformer/unet this is always ``"all"``.
         """
         self._ensure_lora_state()
         pipe = self.pipe
         if pipe is None:
             raise RuntimeError("Pipeline not loaded")
 
+        n = len(lora_paths)
+        if len(adapter_names) != n or len(strengths) != n:
+            raise ValueError("lora_paths, adapter_names, and strengths must have the same length")
+        if targets is not None and len(targets) != n:
+            raise ValueError("targets must have the same length as lora_paths")
+
         if self._lora_fused:
-            logger.info("Unfusing current LoRA before loading new adapter")
+            logger.info("Unfusing current LoRA before loading new adapters")
             self.unfuse_lora()
 
-        if adapter_name in self._lora_adapters:
-            existing = self._lora_adapters[adapter_name]
-            if existing.path == lora_path:
-                logger.info("Adapter '%s' already loaded from '%s', reactivating", adapter_name, lora_path)
-                existing.strength = strength
-                self._activate_adapters([adapter_name], [strength])
-                return
-            else:
-                logger.info("Adapter '%s' loaded from different path, replacing", adapter_name)
-                pipe.delete_adapters([adapter_name])
-                del self._lora_adapters[adapter_name]
+        for i, (lora_path, adapter_name, strength) in enumerate(zip(lora_paths, adapter_names, strengths)):
+            if adapter_name in self._lora_adapters:
+                existing = self._lora_adapters[adapter_name]
+                if existing.path == lora_path:
+                    logger.info("Adapter '%s' already loaded from '%s', reusing from cache", adapter_name, lora_path)
+                    existing.strength = strength
+                    continue
+                else:
+                    logger.info("Adapter '%s' loaded from different path, replacing", adapter_name)
+                    pipe.delete_adapters([adapter_name])
+                    del self._lora_adapters[adapter_name]
 
-        logger.info("Loading LoRA adapter '%s' from '%s' (strength=%.2f)", adapter_name, lora_path, strength)
-        pipe.load_lora_weights(lora_path, adapter_name=adapter_name)
-        self._lora_adapters[adapter_name] = _LoraAdapterState(
-            nickname=adapter_name, path=lora_path, strength=strength
-        )
-        self._activate_adapters([adapter_name], [strength])
-        logger.info("LoRA adapter '%s' loaded and activated", adapter_name)
+            target = (targets[i] if targets else "all") or "all"
+            load_kwargs: Dict[str, Any] = {"adapter_name": adapter_name}
+            if target != "all":
+                load_kwargs["components"] = [target]
+
+            logger.info(
+                "Loading LoRA adapter '%s' from '%s' (strength=%.2f, target=%s)",
+                adapter_name, lora_path, strength, target,
+            )
+            pipe.load_lora_weights(lora_path, **load_kwargs)
+            self._lora_adapters[adapter_name] = _LoraAdapterState(
+                nickname=adapter_name, path=lora_path, strength=strength,
+            )
+
+        self._activate_adapters(list(adapter_names), list(strengths))
+        names_str = ", ".join(adapter_names)
+        logger.info("LoRA adapter(s) loaded and activated: %s", names_str)
 
     def set_active_loras(self, adapter_names: List[str], strengths: List[float]) -> None:
         self._ensure_lora_state()

@@ -265,6 +265,15 @@ def _execute_lora_on_backend(backend: Any, request: _LoraRequest) -> Dict[str, A
     if action == "load":
         backend.load_lora(lora_path=kw["lora_path"], adapter_name=kw["adapter_name"], strength=kw.get("strength", 1.0))
         return {"status": "ok", "message": f"Loaded LoRA '{kw['adapter_name']}'"}
+    elif action == "load_multi":
+        backend.load_loras(
+            lora_paths=kw["lora_paths"],
+            adapter_names=kw["adapter_names"],
+            strengths=kw["strengths"],
+            targets=kw.get("targets"),
+        )
+        names_str = ", ".join(kw["adapter_names"])
+        return {"status": "ok", "message": f"Loaded LoRA adapter(s): {names_str}"}
     elif action == "set_active":
         backend.set_active_loras(adapter_names=kw["adapter_names"], strengths=kw["strengths"])
         return {"status": "ok", "message": "Active adapters updated"}

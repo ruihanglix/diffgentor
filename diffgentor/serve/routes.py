@@ -22,14 +22,15 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from PIL import Image
 
 from diffgentor.serve.schemas import (
+    ActiveLoraInfo,
     HealthResponse,
     ImageData,
     ImageEditJsonRequest,
     ImageGenerateRequest,
     ImagesResponse,
     ListLorasResponse,
+    LoadedAdapterInfo,
     LoraActionResponse,
-    LoraAdapterInfo,
     MergeLoraRequest,
     ModelListResponse,
     ModelObject,
@@ -474,37 +475,78 @@ def _get_lora_backend():
     raise HTTPException(status_code=400, detail="No backend loaded")
 
 
+def _normalize_set_lora_request(req: SetLoraRequest) -> tuple:
+    """Normalize SetLoraRequest fields into parallel lists.
+
+    Returns (nicknames, paths, targets, strengths) as lists of equal length.
+    """
+    nicknames = req.lora_nickname if isinstance(req.lora_nickname, list) else [req.lora_nickname]
+    n = len(nicknames)
+
+    if req.lora_path is None:
+        paths = list(nicknames)
+    elif isinstance(req.lora_path, list):
+        paths = req.lora_path
+    else:
+        paths = [req.lora_path] * n
+
+    if req.target is None:
+        targets = ["all"] * n
+    elif isinstance(req.target, list):
+        targets = req.target
+    else:
+        targets = [req.target] * n
+
+    if isinstance(req.strength, list):
+        strengths = req.strength
+    else:
+        strengths = [req.strength] * n
+
+    if len(paths) != n:
+        raise HTTPException(status_code=422, detail="lora_path list length must match lora_nickname")
+    if len(targets) != n:
+        raise HTTPException(status_code=422, detail="target list length must match lora_nickname")
+    if len(strengths) != n:
+        raise HTTPException(status_code=422, detail="strength list length must match lora_nickname")
+
+    return nicknames, paths, targets, strengths
+
+
 @router.post("/v1/set_lora", response_model=LoraActionResponse)
 async def set_lora(req: SetLoraRequest):
-    """Load a LoRA adapter and activate it.
+    """Load one or more LoRA adapters and activate them.
 
-    If the adapter was previously loaded (same nickname & path), it is
-    re-activated from cache without re-downloading.
+    Accepts both single values and lists for ``lora_nickname``,
+    ``lora_path``, and ``strength``.  When multiple adapters are given
+    they are all loaded and activated simultaneously.
+
+    Previously loaded adapters (same nickname & path) are re-activated
+    from cache without re-downloading.
     """
-    if not req.lora_path and not req.lora_nickname:
-        raise HTTPException(status_code=422, detail="lora_nickname is required")
-
-    lora_path = req.lora_path or req.lora_nickname
+    nicknames, paths, targets, strengths = _normalize_set_lora_request(req)
 
     try:
         if _worker_pool is not None:
             result = await _worker_pool.submit_lora(
-                "load",
-                lora_path=lora_path,
-                adapter_name=req.lora_nickname,
-                strength=req.strength,
+                "load_multi",
+                lora_paths=paths,
+                adapter_names=nicknames,
+                targets=targets,
+                strengths=strengths,
             )
             return LoraActionResponse(**result)
 
         backend = _get_lora_backend()
         async with _gpu_semaphore:
             await asyncio.to_thread(
-                backend.load_lora,
-                lora_path=lora_path,
-                adapter_name=req.lora_nickname,
-                strength=req.strength,
+                backend.load_loras,
+                lora_paths=paths,
+                adapter_names=nicknames,
+                targets=targets,
+                strengths=strengths,
             )
-        return LoraActionResponse(status="ok", message=f"Loaded LoRA '{req.lora_nickname}'")
+        names_str = ", ".join(nicknames)
+        return LoraActionResponse(status="ok", message=f"Loaded LoRA adapter(s): {names_str}")
     except HTTPException:
         raise
     except Exception as e:
@@ -522,7 +564,10 @@ async def merge_lora_weights(req: MergeLoraRequest):
 
         backend = _get_lora_backend()
         async with _gpu_semaphore:
-            await asyncio.to_thread(backend.fuse_lora, lora_scale=req.strength)
+            await asyncio.to_thread(
+                backend.fuse_lora,
+                lora_scale=req.strength,
+            )
         return LoraActionResponse(status="ok", message="LoRA weights fused")
     except HTTPException:
         raise
@@ -550,25 +595,45 @@ async def unmerge_lora_weights():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _build_list_loras_response(info: dict) -> ListLorasResponse:
+    """Build a ListLorasResponse from a backend ``list_loras()`` dict."""
+    loaded = [
+        LoadedAdapterInfo(nickname=a["nickname"], path=a["path"])
+        for a in info.get("loaded_adapters", [])
+    ]
+
+    active_adapters = info.get("loaded_adapters", [])
+    active_names = info.get("active") or []
+
+    active_entries = [
+        ActiveLoraInfo(
+            nickname=a["nickname"],
+            path=a["path"],
+            merged=a.get("fused", False),
+            strength=a.get("strength", 1.0),
+        )
+        for a in active_adapters
+        if a["nickname"] in active_names
+    ]
+
+    active_dict: dict = {}
+    if active_entries:
+        active_dict["all"] = active_entries
+
+    return ListLorasResponse(loaded_adapters=loaded, active=active_dict)
+
+
 @router.get("/v1/list_loras", response_model=ListLorasResponse)
 async def list_loras():
     """List loaded LoRA adapters and their status."""
     try:
         if _worker_pool is not None:
             result = await _worker_pool.submit_lora("list")
-            return ListLorasResponse(
-                loaded_adapters=[LoraAdapterInfo(**a) for a in result.get("loaded_adapters", [])],
-                active=result.get("active"),
-                fused=result.get("fused", False),
-            )
+            return _build_list_loras_response(result)
 
         backend = _get_lora_backend()
         info = backend.list_loras()
-        return ListLorasResponse(
-            loaded_adapters=[LoraAdapterInfo(**a) for a in info.get("loaded_adapters", [])],
-            active=info.get("active"),
-            fused=info.get("fused", False),
-        )
+        return _build_list_loras_response(info)
     except HTTPException:
         raise
     except Exception as e:

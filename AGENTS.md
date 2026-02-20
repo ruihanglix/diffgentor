@@ -160,14 +160,19 @@ client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 result = client.images.generate(prompt="A cat", model="FLUX.1-dev", n=1, size="1024x1024")
 ```
 
-**LoRA hot-loading:**
+**LoRA hot-loading (single or multiple adapters):**
 ```bash
-# Load a LoRA adapter at runtime
+# Load a single LoRA adapter at runtime
 curl -X POST http://localhost:8000/v1/set_lora \
   -H "Content-Type: application/json" \
   -d '{"lora_nickname": "my_style", "lora_path": "/path/to/lora.safetensors", "strength": 0.8}'
 
-# Switch LoRA (previous adapter stays cached for instant switching)
+# Load multiple LoRAs simultaneously (effects stack)
+curl -X POST http://localhost:8000/v1/set_lora \
+  -H "Content-Type: application/json" \
+  -d '{"lora_nickname": ["style", "character"], "lora_path": ["/path/to/style.safetensors", "/path/to/char.safetensors"], "strength": [0.7, 0.9]}'
+
+# Switch LoRA (previous adapters stay cached for instant switching)
 curl -X POST http://localhost:8000/v1/set_lora \
   -d '{"lora_nickname": "other_style", "lora_path": "/path/to/other.safetensors"}'
 ```

@@ -7,7 +7,7 @@
 Reference: https://platform.openai.com/docs/api-reference/images
 """
 
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -154,34 +154,58 @@ class ErrorResponse(BaseModel):
 
 
 class SetLoraRequest(BaseModel):
-    """Request body for POST /v1/set_lora."""
+    """Request body for POST /v1/set_lora.
 
-    lora_nickname: str
-    lora_path: Optional[str] = None
-    strength: float = 1.0
+    Follows the SGLang convention.  Supports both single and multiple LoRA
+    adapters.  When lists are provided for ``lora_nickname``, ``lora_path``,
+    ``target``, and ``strength``, all adapters are loaded and activated
+    simultaneously.  Scalar values are broadcast to all adapters.
+    """
+
+    lora_nickname: Union[str, List[str]]
+    lora_path: Union[str, List[str], None] = None
+    target: Union[str, List[str], None] = None
+    strength: Union[float, List[float]] = 1.0
 
 
 class MergeLoraRequest(BaseModel):
     """Request body for POST /v1/merge_lora_weights."""
 
+    target: Optional[str] = None
     strength: float = 1.0
 
 
-class LoraAdapterInfo(BaseModel):
-    """Info about a single loaded LoRA adapter."""
+class LoadedAdapterInfo(BaseModel):
+    """Entry in the ``loaded_adapters`` list of ``ListLorasResponse``."""
 
     nickname: str
     path: str
+
+
+class ActiveLoraInfo(BaseModel):
+    """Per-adapter detail inside the ``active`` dict of ``ListLorasResponse``."""
+
+    nickname: str
+    path: str
+    merged: bool = False
     strength: float = 1.0
-    fused: bool = False
 
 
 class ListLorasResponse(BaseModel):
-    """Response for GET /v1/list_loras."""
+    """Response for GET /v1/list_loras.
 
-    loaded_adapters: List[LoraAdapterInfo] = Field(default_factory=list)
-    active: Optional[List[str]] = None
-    fused: bool = False
+    Matches the SGLang response format::
+
+        {
+          "loaded_adapters": [{"nickname": "...", "path": "..."}],
+          "active": {
+            "all": [{"nickname": "...", "path": "...", "merged": true, "strength": 1.0}]
+          }
+        }
+    """
+
+    loaded_adapters: List[LoadedAdapterInfo] = Field(default_factory=list)
+    active: dict = Field(default_factory=dict)
 
 
 class LoraActionResponse(BaseModel):

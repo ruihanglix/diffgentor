@@ -449,15 +449,18 @@ The server supports dynamic LoRA adapter management, allowing you to load, switc
 
 ### POST /v1/set_lora
 
-Load a LoRA adapter and make it active for subsequent inference requests.
+Load one or more LoRA adapters and make them active for subsequent inference requests. Supports both single and multiple adapters.
 
 **Request fields:**
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `lora_nickname` | string | *required* | Unique identifier for this adapter |
-| `lora_path` | string | nickname | Path to `.safetensors` file, directory, or HuggingFace repo ID |
-| `strength` | float | `1.0` | Adapter strength (scale factor) |
+| `lora_nickname` | string or list of strings | *required* | Unique identifier(s) for the adapter(s) |
+| `lora_path` | string, list of strings, or null | nickname | Path(s) to `.safetensors` file, directory, or HuggingFace repo ID |
+| `target` | string or list of strings | `"all"` | Which component(s) to apply the LoRA to (`"all"`, `"transformer"`, etc.) |
+| `strength` | float or list of floats | `1.0` | Adapter strength(s) (scale factor). If scalar, broadcast to all adapters |
+
+**Single LoRA:**
 
 ```bash
 curl -X POST http://localhost:8000/v1/set_lora \
@@ -469,11 +472,31 @@ curl -X POST http://localhost:8000/v1/set_lora \
   }'
 ```
 
-**Caching:** If you call `set_lora` again with the same nickname and path, the adapter weights are reused from cache — only the strength is updated.
+**Multiple LoRAs (activated simultaneously):**
+
+```bash
+curl -X POST http://localhost:8000/v1/set_lora \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lora_nickname": ["style_lora", "character_lora"],
+    "lora_path": ["/path/to/style.safetensors", "/path/to/character.safetensors"],
+    "strength": [0.7, 0.9]
+  }'
+```
+
+**Notes:**
+- When lists are provided, all parameters (`lora_nickname`, `lora_path`, `strength`) must have the same length, or scalar values will be broadcast.
+- Multiple LoRAs are applied simultaneously using diffusers' `set_adapters` — their effects stack.
+- If you call `set_lora` again with the same nickname and path, the adapter weights are reused from cache — only the strength is updated.
 
 ### POST /v1/merge_lora_weights
 
 Fuse the currently active LoRA weights directly into the base model for slightly faster inference.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `target` | string | `null` | Which component to merge (e.g. `"all"`, `"transformer"`) |
+| `strength` | float | `1.0` | LoRA strength for merge |
 
 ```bash
 curl -X POST http://localhost:8000/v1/merge_lora_weights \
@@ -502,15 +525,13 @@ curl http://localhost:8000/v1/list_loras
 ```json
 {
   "loaded_adapters": [
-    {
-      "nickname": "my_style",
-      "path": "/path/to/lora.safetensors",
-      "strength": 0.8,
-      "fused": false
-    }
+    {"nickname": "my_style", "path": "/path/to/lora.safetensors"}
   ],
-  "active": ["my_style"],
-  "fused": false
+  "active": {
+    "all": [
+      {"nickname": "my_style", "path": "/path/to/lora.safetensors", "merged": false, "strength": 0.8}
+    ]
+  }
 }
 ```
 
@@ -532,6 +553,27 @@ curl -X POST http://localhost:8000/v1/set_lora \
 # 5. Switch back to LoRA A (instant, loaded from cache)
 curl -X POST http://localhost:8000/v1/set_lora \
   -d '{"lora_nickname": "lora_a", "lora_path": "/path/to/A.safetensors"}'
+```
+
+### Combining Multiple LoRAs
+
+You can activate multiple LoRA adapters simultaneously. Their effects are stacked.
+
+```bash
+# Load a style LoRA and a character LoRA at the same time
+curl -X POST http://localhost:8000/v1/set_lora \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lora_nickname": ["style_lora", "character_lora"],
+    "lora_path": ["/path/to/style.safetensors", "/path/to/character.safetensors"],
+    "strength": [0.7, 0.9]
+  }'
+
+# Generate with both LoRAs active...
+
+# Switch to a single LoRA (deactivates the others)
+curl -X POST http://localhost:8000/v1/set_lora \
+  -d '{"lora_nickname": "style_lora", "lora_path": "/path/to/style.safetensors"}'
 ```
 
 ### Multi-GPU Support

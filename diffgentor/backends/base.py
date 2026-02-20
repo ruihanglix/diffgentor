@@ -114,12 +114,31 @@ class BasePipelineBackend(ABC):
     # ------------------------------------------------------------------
 
     def load_lora(self, lora_path: str, adapter_name: str, strength: float = 1.0) -> None:
-        """Load a LoRA adapter and activate it.
+        """Load a single LoRA adapter and activate it.
 
         Args:
             lora_path: Path to LoRA weights (safetensors file, directory, or HF repo ID)
             adapter_name: Unique nickname for this adapter
             strength: Adapter strength (scale), default 1.0
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support LoRA management")
+
+    def load_loras(
+        self,
+        lora_paths: List[str],
+        adapter_names: List[str],
+        strengths: List[float],
+        targets: Optional[List[str]] = None,
+    ) -> None:
+        """Load multiple LoRA adapters and activate them all simultaneously.
+
+        Args:
+            lora_paths: Paths to LoRA weights
+            adapter_names: Unique nicknames for each adapter
+            strengths: Adapter strengths (scale factors)
+            targets: Which component(s) to apply each adapter to.
+                     Valid values depend on the backend; common values include
+                     ``"all"`` (default), ``"transformer"``, ``"transformer_2"``.
         """
         raise NotImplementedError(f"{type(self).__name__} does not support LoRA management")
 
