@@ -19,6 +19,7 @@ from PIL import Image
 from diffgentor.serve.schemas import (
     ErrorDetail,
     ErrorResponse,
+    HealthResponse,
     ImageData,
     ImageGenerateRequest,
     ImagesResponse,
@@ -241,3 +242,23 @@ async def retrieve_model(model_id: str):
     if model_id != _model_name:
         raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
     return ModelObject(id=_model_name, created=0, owned_by="diffgentor")
+
+
+# ---------------------------------------------------------------------------
+# GET /health
+# ---------------------------------------------------------------------------
+
+
+@router.get("/health", response_model=HealthResponse)
+async def health():
+    backend_ready = (
+        _t2i_backend is not None
+        or _editing_backend is not None
+        or _worker_pool is not None
+    )
+    return HealthResponse(
+        status="ok",
+        mode=_serve_mode,
+        model=_model_name or None,
+        backend_ready=backend_ready,
+    )

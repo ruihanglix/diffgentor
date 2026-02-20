@@ -187,6 +187,7 @@ def run_serve(args: Namespace) -> int:
     print(f"  POST /v1/images/generations  {'[enabled]' if (t2i_backend or (pool and mode == 't2i')) else '[disabled]'}")
     print(f"  POST /v1/images/edits        {'[enabled]' if (editing_backend or (pool and mode == 'edit')) else '[disabled]'}")
     print(f"  GET  /v1/models              [enabled]")
+    print(f"  GET  /health                 [enabled]")
 
     uvicorn.run(app, host=host, port=port, log_level="info")
 

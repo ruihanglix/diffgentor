@@ -79,6 +79,15 @@ class ModelListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class HealthResponse(BaseModel):
+    """Response for GET /health."""
+
+    status: str = "ok"
+    mode: Optional[str] = None
+    model: Optional[str] = None
+    backend_ready: bool = False
+
+
 class ErrorDetail(BaseModel):
     message: str
     type: str = "invalid_request_error"
