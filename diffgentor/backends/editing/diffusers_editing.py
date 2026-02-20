@@ -188,6 +188,8 @@ class DiffusersEditingBackend(BaseEditingBackend):
         if not self._initialized:
             raise RuntimeError("Backend not initialized. Call load_model() first.")
 
+        kwargs.pop("quality", None)
+
         # Prepare generator
         generator = None
         if seed is not None:
