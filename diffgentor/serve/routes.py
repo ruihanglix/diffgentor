@@ -229,7 +229,7 @@ async def _parse_edit_multipart(request: Request) -> dict:
 
     image_uploads: List[UploadFile] = []
     for key, value in form.multi_items():
-        if key in ("image", "image[]") and isinstance(value, UploadFile):
+        if key in ("image", "image[]", "images", "images[]") and isinstance(value, UploadFile):
             image_uploads.append(value)
 
     prompt = _form_str(form.get("prompt"))
