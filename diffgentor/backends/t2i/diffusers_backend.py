@@ -141,20 +141,22 @@ class DiffusersBackend(BaseBackend):
         if device == "cuda" and torch.cuda.is_available():
             import os
             from diffgentor.utils.distributed import get_local_rank, is_distributed, get_world_size
-            
+
             # Check if running in distributed mode:
             # 1. torch.distributed is initialized, OR
             # 2. Environment variables indicate multi-process launch (torchrun)
             env_world_size = int(os.environ.get("WORLD_SIZE", 1))
             env_local_rank = os.environ.get("LOCAL_RANK")
-            
+
             if is_distributed() or env_world_size > 1 or env_local_rank is not None:
                 local_rank = get_local_rank()
                 device = f"cuda:{local_rank}"
                 torch.cuda.set_device(local_rank)
                 print_rank0(f"Distributed mode: using device {device} (world_size={get_world_size()})")
-            
+
             self.pipe = self.pipe.to(device)
+        elif device == "cuda" and not torch.cuda.is_available():
+            print_rank0("WARNING: CUDA requested but not available, model will run on CPU")
         elif device != "cuda":
             self.pipe = self.pipe.to(device)
 
