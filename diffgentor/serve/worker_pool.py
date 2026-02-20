@@ -74,6 +74,22 @@ def _pil_to_bytes(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 
+def _run_on_device(device_str: str, fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Execute ``fn`` after pinning the thread to the correct CUDA device.
+
+    Thread pool threads default to ``cuda:0``.  When an InProcessPool runs
+    multiple replicas on different GPUs, we must call
+    ``torch.cuda.set_device`` so that internal PyTorch / PEFT / diffusers
+    operations that rely on the *current* device (e.g. intermediate tensor
+    allocation, LoRA weight injection) target the right GPU.
+    """
+    if device_str and device_str.startswith("cuda:"):
+        import torch
+
+        torch.cuda.set_device(torch.device(device_str))
+    return fn(*args, **kwargs)
+
+
 def _bytes_to_pil(data: bytes) -> Image.Image:
     return Image.open(io.BytesIO(data)).convert("RGB")
 
@@ -180,22 +196,23 @@ class InProcessPool(WorkerPool):
 
     async def _worker_loop(self, worker_id: int, backend: Any) -> None:
         """Pull requests from the queue and execute inference."""
+        device = getattr(backend, "device", None) or "cuda:0"
         while True:
             request, future = await self._queue.get()
             try:
                 if isinstance(request, _GenerateRequest):
                     result = await asyncio.to_thread(
-                        backend.generate, request.prompt, **request.kwargs
+                        _run_on_device, device, backend.generate, request.prompt, **request.kwargs
                     )
                 elif isinstance(request, _EditRequest):
                     imgs = [_bytes_to_pil(b) for b in request.images_bytes]
                     input_imgs: Any = imgs if len(imgs) > 1 else imgs[0]
                     result = await asyncio.to_thread(
-                        backend.edit, input_imgs, request.instruction, **request.kwargs
+                        _run_on_device, device, backend.edit, input_imgs, request.instruction, **request.kwargs
                     )
                 elif isinstance(request, _LoraRequest):
                     result = await asyncio.to_thread(
-                        _execute_lora_on_backend, backend, request
+                        _run_on_device, device, _execute_lora_on_backend, backend, request
                     )
                 else:
                     raise TypeError(f"Unknown request type: {type(request)}")
