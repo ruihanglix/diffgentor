@@ -115,6 +115,7 @@ class DiffusersLoRAMixin:
                 nickname=adapter_name, path=lora_path, strength=strength,
             )
 
+        self._ensure_lora_on_device()
         self._activate_adapters(list(adapter_names), list(strengths))
         names_str = ", ".join(adapter_names)
         logger.info("LoRA adapter(s) loaded and activated: %s", names_str)
@@ -213,6 +214,48 @@ class DiffusersLoRAMixin:
     def _ensure_lora_state(self) -> None:
         if not hasattr(self, "_lora_adapters"):
             self._init_lora_state()
+
+    def _ensure_lora_on_device(self) -> None:
+        """Move any LoRA parameters that ended up on the wrong device.
+
+        When loading LoRA in a multi-GPU in-process pool, PEFT may
+        create adapter parameters on the default CUDA device (cuda:0)
+        instead of the pipeline's actual device.  This method detects
+        and fixes the mismatch.
+        """
+        import torch
+
+        pipe = self.pipe
+        if pipe is None:
+            return
+
+        target_device: Optional[torch.device] = None
+        for component_name in ("transformer", "unet"):
+            component = getattr(pipe, component_name, None)
+            if component is None:
+                continue
+            for name, param in component.named_parameters():
+                if "lora" not in name:
+                    target_device = param.device
+                    break
+            if target_device is not None:
+                break
+
+        if target_device is None or target_device.type != "cuda":
+            return
+
+        moved = 0
+        for component_name in ("transformer", "unet"):
+            component = getattr(pipe, component_name, None)
+            if component is None:
+                continue
+            for name, param in component.named_parameters():
+                if param.device != target_device:
+                    param.data = param.data.to(target_device)
+                    moved += 1
+
+        if moved > 0:
+            logger.info("Moved %d LoRA parameters to %s", moved, target_device)
 
     def _activate_adapters(self, names: List[str], strengths: List[float]) -> None:
         pipe = self.pipe

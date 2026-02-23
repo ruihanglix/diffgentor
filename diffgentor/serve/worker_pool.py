@@ -145,6 +145,9 @@ class InProcessPool(WorkerPool):
     Each replica is pinned to ``cuda:i``.  An ``asyncio.Queue`` dispatches
     incoming requests to N concurrent worker coroutines that call the backend
     via ``asyncio.to_thread``.
+
+    LoRA operations bypass the shared queue and are sent directly to each
+    backend with a per-backend ``asyncio.Lock`` to prevent concurrent access.
     """
 
     def __init__(
@@ -164,14 +167,22 @@ class InProcessPool(WorkerPool):
         self._backends: list = []
         self._queue: asyncio.Queue[Tuple[Any, asyncio.Future]] = asyncio.Queue()
         self._worker_tasks: List[asyncio.Task] = []
+        self._backend_locks: List[asyncio.Lock] = []
 
     # -- lifecycle -----------------------------------------------------------
 
     def load(self) -> None:
-        """Load backend replicas on each GPU in parallel (called from the main thread)."""
+        """Load backend replicas on each GPU in parallel (called from the main thread).
+
+        Backend objects are created sequentially (to avoid thread-unsafe lazy
+        imports in libraries like diffusers), then ``load_model()`` is called
+        in parallel across threads since model weight loading is the bottleneck.
+        """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        def _load_one(i: int, gpu_id: int):
+        # Phase 1: create backend objects sequentially (triggers module imports)
+        backends_to_load: List[Tuple[int, int, Any]] = []
+        for i, gpu_id in enumerate(self._gpu_ids[: self._num_workers]):
             cfg = BackendConfig(
                 backend=self._backend_config.backend,
                 model_name=self._backend_config.model_name,
@@ -185,19 +196,26 @@ class InProcessPool(WorkerPool):
             else:
                 from diffgentor.backends.editing.registry import get_editing_backend
                 backend = get_editing_backend(cfg, self._opt_config)
+            backends_to_load.append((i, gpu_id, backend))
+
+        # Phase 2: load model weights in parallel (the expensive part)
+        def _load_one(i: int, gpu_id: int, backend: Any) -> Tuple[int, Any]:
             logger.info("Loading replica %d on cuda:%d ...", i, gpu_id)
             backend.load_model()
             logger.info("Replica %d ready", i)
             return i, backend
 
-        items = list(enumerate(self._gpu_ids[: self._num_workers]))
-        with ThreadPoolExecutor(max_workers=len(items)) as executor:
-            futures = {executor.submit(_load_one, i, gpu_id): i for i, gpu_id in items}
-            results = {}
+        with ThreadPoolExecutor(max_workers=len(backends_to_load)) as executor:
+            futures = {
+                executor.submit(_load_one, i, gpu_id, backend): i
+                for i, gpu_id, backend in backends_to_load
+            }
+            results: Dict[int, Any] = {}
             for future in as_completed(futures):
                 idx, backend = future.result()
                 results[idx] = backend
-        self._backends = [results[i] for i in range(len(items))]
+        self._backends = [results[i] for i in range(len(backends_to_load))]
+        self._backend_locks = [asyncio.Lock() for _ in self._backends]
 
     def start_workers(self) -> None:
         """Spawn asyncio worker tasks (must be called inside a running loop)."""
@@ -208,25 +226,23 @@ class InProcessPool(WorkerPool):
     async def _worker_loop(self, worker_id: int, backend: Any) -> None:
         """Pull requests from the queue and execute inference."""
         device = getattr(backend, "device", None) or "cuda:0"
+        lock = self._backend_locks[worker_id]
         while True:
             request, future = await self._queue.get()
             try:
-                if isinstance(request, _GenerateRequest):
-                    result = await asyncio.to_thread(
-                        _run_on_device, device, backend.generate, request.prompt, **request.kwargs
-                    )
-                elif isinstance(request, _EditRequest):
-                    imgs = [_bytes_to_pil(b) for b in request.images_bytes]
-                    input_imgs: Any = imgs if len(imgs) > 1 else imgs[0]
-                    result = await asyncio.to_thread(
-                        _run_on_device, device, backend.edit, input_imgs, request.instruction, **request.kwargs
-                    )
-                elif isinstance(request, _LoraRequest):
-                    result = await asyncio.to_thread(
-                        _run_on_device, device, _execute_lora_on_backend, backend, request
-                    )
-                else:
-                    raise TypeError(f"Unknown request type: {type(request)}")
+                async with lock:
+                    if isinstance(request, _GenerateRequest):
+                        result = await asyncio.to_thread(
+                            _run_on_device, device, backend.generate, request.prompt, **request.kwargs
+                        )
+                    elif isinstance(request, _EditRequest):
+                        imgs = [_bytes_to_pil(b) for b in request.images_bytes]
+                        input_imgs: Any = imgs if len(imgs) > 1 else imgs[0]
+                        result = await asyncio.to_thread(
+                            _run_on_device, device, backend.edit, input_imgs, request.instruction, **request.kwargs
+                        )
+                    else:
+                        raise TypeError(f"Unknown request type: {type(request)}")
                 future.set_result(result)
             except Exception as exc:
                 future.set_exception(exc)
@@ -258,14 +274,26 @@ class InProcessPool(WorkerPool):
         return await future
 
     async def submit_lora(self, action: str, **kwargs: Any) -> Dict[str, Any]:
-        """Broadcast a LoRA command to all worker replicas."""
-        loop = asyncio.get_running_loop()
-        futures: List[asyncio.Future] = []
-        for _ in self._backends:
-            future: asyncio.Future[Dict[str, Any]] = loop.create_future()
-            await self._queue.put((_LoraRequest(action=action, kwargs=kwargs), future))
-            futures.append(future)
-        results = await asyncio.gather(*futures)
+        """Execute a LoRA command on every backend deterministically.
+
+        Unlike generation/editing requests that go through the shared work
+        queue, LoRA operations are sent **directly** to each backend one by
+        one.  A per-backend ``asyncio.Lock`` prevents concurrent access with
+        the worker task that owns that backend.
+
+        This guarantees that every replica receives the LoRA command — the
+        shared queue cannot make that guarantee because any idle worker may
+        consume multiple items while busy workers consume none.
+        """
+        request = _LoraRequest(action=action, kwargs=kwargs)
+        results: List[Dict[str, Any]] = []
+        for i, backend in enumerate(self._backends):
+            device = getattr(backend, "device", None) or "cuda:0"
+            async with self._backend_locks[i]:
+                result = await asyncio.to_thread(
+                    _run_on_device, device, _execute_lora_on_backend, backend, request
+                )
+            results.append(result)
         return results[0] if results else {}
 
     async def shutdown(self) -> None:
